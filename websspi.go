@@ -63,8 +63,15 @@ func (a *Authenticator) Authenticate(r *http.Request) error {
 
 // Return401 populates WWW-Authenticate header, indicating to client that authentication
 // is required and returns a 401 (Unauthorized) response code.
-func (a *Authenticator) Return401(w http.ResponseWriter) {
-	w.Header().Set("WWW-Authenticate", "Negotiate")
+// The data parameter can be empty for the first 401 response from the server.
+// For subsequent 401 responses the data parameter should contain the gssapi-data,
+// which is required for continuation of the negotiation.
+func (a *Authenticator) Return401(w http.ResponseWriter, data string) {
+	value := "Negotiate"
+	if data != "" {
+		value += " " + data
+	}
+	w.Header().Set("WWW-Authenticate", value)
 	http.Error(w, "Error!", http.StatusUnauthorized)
 }
 
