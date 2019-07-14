@@ -39,6 +39,44 @@ func TestConfigValidate_Complete(t *testing.T) {
 	}
 }
 
+func TestAuthenticate_NoAuthHeader(t *testing.T) {
+	auth := newTestAuthenticator()
+	auth.authAPI.(*stubAPI).acceptOK = true
+
+	r := httptest.NewRequest("GET", "http://example.local/", nil)
+
+	_, err := auth.Authenticate(r)
+	if err == nil {
+		t.Error("Authenticate() returned nil (no error) for request without Authorization header, wanted an error")
+	}
+}
+
+func TestAuthenticate_BadAuthPrefix(t *testing.T) {
+	auth := newTestAuthenticator()
+	auth.authAPI.(*stubAPI).acceptOK = true
+
+	r := httptest.NewRequest("GET", "http://example.local/", nil)
+	r.Header.Set("Authorization", "auth: neg")
+
+	_, err := auth.Authenticate(r)
+	if err == nil {
+		t.Error("Authenticate() returned nil (no error) for request with bad Authorization header, wanted an error")
+	}
+}
+
+func TestAuthenticate_EmptyToken(t *testing.T) {
+	auth := newTestAuthenticator()
+	auth.authAPI.(*stubAPI).acceptOK = true
+
+	r := httptest.NewRequest("GET", "http://example.local/", nil)
+	r.Header.Set("Authorization", "Negotiate  ")
+
+	_, err := auth.Authenticate(r)
+	if err == nil {
+		t.Error("Authenticate() returned nil (no error) for request with bad Authorization header, wanted an error")
+	}
+}
+
 func TestAuthenticate_ValidToken(t *testing.T) {
 	auth := newTestAuthenticator()
 	auth.authAPI.(*stubAPI).acceptOK = true
