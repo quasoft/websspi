@@ -64,7 +64,7 @@ func (a *Authenticator) Authenticate(r *http.Request) (string, error) {
 		return "", errors.New("the Authorization header does not start with 'Negotiate'")
 	}
 
-	// 2. Extract token from authenticate header
+	// 2. Extract token from Authorization header
 	// 3. Parse token
 	// 4. Authenticate user with provided token
 	// 5. Get username
