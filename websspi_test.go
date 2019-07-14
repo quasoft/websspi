@@ -46,7 +46,7 @@ func TestAuthenticate_ValidToken(t *testing.T) {
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("WWW-Authenticate", "TODO: Put a valid test token here for site example.local")
 
-	err := auth.Authenticate(r)
+	_, err := auth.Authenticate(r)
 	if err != nil {
 		t.Errorf(
 			"Authenticate() with valid token returned error %q, wanted nil (no error)",

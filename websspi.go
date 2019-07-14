@@ -51,16 +51,17 @@ func New(config *Config) (*Authenticator, error) {
 
 // Authenticate tries to authenticate the HTTP request and returns nil
 // if authentication was successful.
-func (a *Authenticator) Authenticate(r *http.Request) error {
+// Returns error and data for continuation if authentication was not successful.
+func (a *Authenticator) Authenticate(r *http.Request) (string, error) {
 	// TODO:
 	// 1. Check if Authorization header is present
 	authzHeader := r.Header.Get("Authorization")
 	if authzHeader == "" {
-		return errors.New("the Authorization header was not provided")
+		return "", errors.New("the Authorization header was not provided")
 	}
-
-	if !strings.HasPrefix(strings.ToLower(authzHeader), "authorization: negotiate") {
-		return errors.New("the Authorization header does not start with 'negotiate'")
+	// 1.1. Make sure header starts with "Negotiate"
+	if !strings.HasPrefix(strings.ToLower(authzHeader), "negotiate") {
+		return "", errors.New("the Authorization header does not start with 'Negotiate'")
 	}
 
 	// 2. Extract token from authenticate header
@@ -68,7 +69,7 @@ func (a *Authenticator) Authenticate(r *http.Request) error {
 	// 4. Authenticate user with provided token
 	// 5. Get username
 	// 6. Store username in context
-	return errors.New("not implemented")
+	return "", errors.New("not implemented")
 }
 
 // Return401 populates WWW-Authenticate header, indicating to client that authentication
@@ -96,9 +97,9 @@ func (a *Authenticator) WithAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Authenticating request to %s", r.RequestURI)
 
-		err := a.Authenticate(r)
+		data, err := a.Authenticate(r)
 		if err != nil {
-			a.Return401(w)
+			a.Return401(w, data)
 			return
 		}
 
