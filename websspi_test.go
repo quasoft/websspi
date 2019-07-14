@@ -8,7 +8,8 @@ import (
 )
 
 type stubAPI struct {
-	acceptOK bool // if stub should return True in simulated calls to Accept
+	acceptOK   bool   // if stub should return True in simulated calls to Accept
+	validToken string // value that will be asumed to be a valid token
 }
 
 func (s *stubAPI) AcceptSecurityContext(token string) error {
@@ -95,9 +96,10 @@ func TestAuthenticate_EmptyToken(t *testing.T) {
 func TestAuthenticate_ValidToken(t *testing.T) {
 	auth := newTestAuthenticator()
 	auth.authAPI.(*stubAPI).acceptOK = true
+	auth.authAPI.(*stubAPI).validToken = "a87421000492aa874209af8bc028"
 
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
-	r.Header.Set("WWW-Authenticate", "TODO: Put a valid test token here for site example.local")
+	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
 
 	_, err := auth.Authenticate(r)
 	if err != nil {
@@ -111,9 +113,10 @@ func TestAuthenticate_ValidToken(t *testing.T) {
 func TestWithAuth_ValidToken(t *testing.T) {
 	auth := newTestAuthenticator()
 	auth.authAPI.(*stubAPI).acceptOK = true
+	auth.authAPI.(*stubAPI).validToken = "a87421000492aa874209af8bc028"
 
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
-	r.Header.Set("WWW-Authenticate", "TODO: Put a valid test token here for site example.local")
+	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
 	w := httptest.NewRecorder()
 
 	handlerCalled := false
