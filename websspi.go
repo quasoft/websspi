@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 )
 
 // The Config object determines the behaviour of the Authenticator.
@@ -52,7 +53,16 @@ func New(config *Config) (*Authenticator, error) {
 // if authentication was successful.
 func (a *Authenticator) Authenticate(r *http.Request) error {
 	// TODO:
-	// 1. Check if WWW-Authenticate header is present
+	// 1. Check if Authorization header is present
+	authzHeader := r.Header.Get("Authorization")
+	if authzHeader == "" {
+		return errors.New("the Authorization header was not provided")
+	}
+
+	if !strings.HasPrefix(strings.ToLower(authzHeader), "authorization: negotiate") {
+		return errors.New("the Authorization header does not start with 'negotiate'")
+	}
+
 	// 2. Extract token from authenticate header
 	// 3. Parse token
 	// 4. Authenticate user with provided token
