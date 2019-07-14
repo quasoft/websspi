@@ -42,7 +42,6 @@ func TestConfigValidate_Complete(t *testing.T) {
 
 func TestAuthenticate_NoAuthHeader(t *testing.T) {
 	auth := newTestAuthenticator()
-	auth.authAPI.(*stubAPI).acceptOK = true
 
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 
@@ -54,7 +53,6 @@ func TestAuthenticate_NoAuthHeader(t *testing.T) {
 
 func TestAuthenticate_BadAuthPrefix(t *testing.T) {
 	auth := newTestAuthenticator()
-	auth.authAPI.(*stubAPI).acceptOK = true
 
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "auth: neg")
@@ -67,7 +65,6 @@ func TestAuthenticate_BadAuthPrefix(t *testing.T) {
 
 func TestAuthenticate_EmptyToken(t *testing.T) {
 	auth := newTestAuthenticator()
-	auth.authAPI.(*stubAPI).acceptOK = true
 
 	tests := []struct {
 		name  string
