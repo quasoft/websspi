@@ -68,12 +68,27 @@ func TestAuthenticate_EmptyToken(t *testing.T) {
 	auth := newTestAuthenticator()
 	auth.authAPI.(*stubAPI).acceptOK = true
 
-	r := httptest.NewRequest("GET", "http://example.local/", nil)
-	r.Header.Set("Authorization", "Negotiate  ")
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{"No space delimiter and no token", "Negotiate"},
+		{"Space delimiter, but no token", "Negotiate "},
+		{"Double space delimiter, but no token", "Negotiate  "},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := httptest.NewRequest("GET", "http://example.local/", nil)
+			r.Header.Set("Authorization", tt.value)
 
-	_, err := auth.Authenticate(r)
-	if err == nil {
-		t.Error("Authenticate() returned nil (no error) for request with bad Authorization header, wanted an error")
+			_, err := auth.Authenticate(r)
+			if err == nil {
+				t.Errorf(
+					"Authenticate() returned nil (no error) for request with bad Authorization header (%v), wanted an error",
+					tt.name,
+				)
+			}
+		})
 	}
 }
 

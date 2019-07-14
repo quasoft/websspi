@@ -65,6 +65,15 @@ func (a *Authenticator) Authenticate(r *http.Request) (string, error) {
 	}
 
 	// 2. Extract token from Authorization header
+	authzParts := strings.Split(strings.TrimSpace(authzHeader), " ")
+	if len(authzParts) < 2 {
+		return "", errors.New("the Authorization header does not contain token (gssapi-data)")
+	}
+	token := authzParts[len(authzParts)-1]
+	if token == "" {
+		return "", errors.New("the token (gssapi-data) in the Authorization header is empty")
+	}
+
 	// 3. Parse token
 	// 4. Authenticate user with provided token
 	// 5. Get username
