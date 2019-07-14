@@ -90,6 +90,33 @@ func TestAuthenticate_EmptyToken(t *testing.T) {
 	}
 }
 
+func TestAuthenticate_BadBase64(t *testing.T) {
+	auth := newTestAuthenticator()
+
+	r := httptest.NewRequest("GET", "http://example.local/", nil)
+	r.Header.Set("Authorization", "Negotiate a874-210004-92aa8742-09af8-bc028")
+
+	_, err := auth.Authenticate(r)
+	if err == nil {
+		t.Error("Authenticate() returned nil (no error) for request with token that is not valid base64 string, wanted an error")
+	}
+}
+
+func TestAuthenticate_ValidBase64(t *testing.T) {
+	auth := newTestAuthenticator()
+
+	r := httptest.NewRequest("GET", "http://example.local/", nil)
+	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
+
+	_, err := auth.Authenticate(r)
+	if err != nil {
+		t.Errorf(
+			"Authenticate() returned error %q for request with valid base64 string, wanted nil (no error)",
+			err,
+		)
+	}
+}
+
 func TestAuthenticate_ValidToken(t *testing.T) {
 	auth := newTestAuthenticator()
 	auth.authAPI.(*stubAPI).acceptOK = true

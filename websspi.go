@@ -1,6 +1,7 @@
 package websspi
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log"
@@ -74,7 +75,12 @@ func (a *Authenticator) Authenticate(r *http.Request) (string, error) {
 		return "", errors.New("the token (gssapi-data) in the Authorization header is empty")
 	}
 
-	// 3. Parse token
+	// 3. Decode token
+	_, err := base64.StdEncoding.DecodeString(token)
+	if err != nil {
+		return "", errors.New("could not decode token as base64 string")
+	}
+
 	// 4. Authenticate user with provided token
 	// 5. Get username
 	// 6. Store username in context
