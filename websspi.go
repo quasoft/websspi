@@ -7,22 +7,30 @@ import (
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/quasoft/websspi/sspicontext"
 )
 
 // The Config object determines the behaviour of the Authenticator.
 type Config struct {
+	contextStore sspicontext.Store
 	KrbPrincipal string // Name of Kerberos principle used by the service
 }
 
 // NewConfig creates a configuration object with default values.
 func NewConfig() *Config {
-	return &Config{}
+	return &Config{
+		contextStore: sspicontext.NewCookieStore(),
+	}
 }
 
 // Validate makes basic validation of configuration to make sure that important and required fields
 // have been set with values in expected format.
-func (c Config) Validate() error {
-	return errors.New("not implemented")
+func (c *Config) Validate() error {
+	if c.contextStore == nil {
+		return errors.New("Store for context handles not specified in Config")
+	}
+	return nil
 }
 
 type authAPI interface {
@@ -107,18 +115,17 @@ func (a *Authenticator) Return401(w http.ResponseWriter, data string) {
 // If authentication was not successful, the server returns 401 response code with
 // a WWW-Authenticate, indicating that authentication is required.
 func (a *Authenticator) WithAuth(next http.Handler) http.Handler {
-	log.Print("WithAuth called")
-
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("Authenticating request to %s", r.RequestURI)
+		log.Printf("Authenticating request to %s\n", r.RequestURI)
 
 		data, err := a.Authenticate(r)
 		if err != nil {
+			log.Printf("Authentication failed with error: %v\n", err)
 			a.Return401(w, data)
 			return
 		}
 
-		log.Print("Authenticated")
+		log.Print("Authenticated\n")
 		next.ServeHTTP(w, r)
 	})
 }
