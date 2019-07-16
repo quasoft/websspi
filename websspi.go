@@ -6,22 +6,30 @@ import (
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/quasoft/websspi/sspicontext"
 )
 
 // The Config object determines the behaviour of the Authenticator.
 type Config struct {
+	contextStore sspicontext.Store
 	KrbPrincipal string // Name of Kerberos principle used by the service
 }
 
 // NewConfig creates a configuration object with default values.
 func NewConfig() *Config {
-	return &Config{}
+	return &Config{
+		contextStore: sspicontext.NewCookieStore(),
+	}
 }
 
 // Validate makes basic validation of configuration to make sure that important and required fields
 // have been set with values in expected format.
-func (c Config) Validate() error {
-	return errors.New("not implemented")
+func (c *Config) Validate() error {
+	if c.contextStore == nil {
+		return errors.New("Store for context handles not specified in Config")
+	}
+	return nil
 }
 
 type authAPI interface {

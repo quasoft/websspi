@@ -18,9 +18,23 @@ func (s *stubAPI) AcceptSecurityContext(token string) error {
 	return nil
 }
 
+type stubContextStore struct {
+	contextHandle interface{}
+}
+
+func (s *stubContextStore) GetHandle(r *http.Request) (interface{}, error) {
+	return s.contextHandle, nil
+}
+
+func (s *stubContextStore) SetHandle(r *http.Request, w http.ResponseWriter, contextHandle interface{}) error {
+	s.contextHandle = contextHandle
+	return nil
+}
+
 // newTestAuthenticator creates an Authenticator for use in tests.
 func newTestAuthenticator() *Authenticator {
 	config := Config{
+		contextStore: &stubContextStore{},
 		KrbPrincipal: "service@test.local",
 	}
 	auth := Authenticator{
