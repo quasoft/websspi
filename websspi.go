@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/quasoft/websspi/sspicontext"
 )
@@ -34,14 +35,17 @@ func (c *Config) Validate() error {
 }
 
 type authAPI interface {
+	AcquireCredentialsHandle(principal string) (*CredHandle, *time.Time, error)
 	AcceptSecurityContext(token string) error
 }
 
 // The Authenticator type provides middleware methods for authentication of http requests.
 // A single authenticator object can be shared by concurrent goroutines.
 type Authenticator struct {
-	Config  Config
-	authAPI authAPI
+	Config     Config
+	authAPI    authAPI
+	serverCred *CredHandle
+	credExpiry *time.Time
 }
 
 // New creates a new Authenticator object with the given configuration options.
@@ -51,10 +55,19 @@ func New(config *Config) (*Authenticator, error) {
 		return nil, fmt.Errorf("invalid config: %v", err)
 	}
 
-	var auth = &Authenticator{
-		Config:  *config,
-		authAPI: &sspiAPI{},
+	api := &sspiAPI{}
+	credential, expiry, err := api.AcquireCredentialsHandle(config.KrbPrincipal)
+	if err != nil {
+		return nil, err
 	}
+
+	var auth = &Authenticator{
+		Config:     *config,
+		authAPI:    api,
+		serverCred: credential,
+		credExpiry: expiry,
+	}
+
 	return auth, nil
 }
 
@@ -64,7 +77,15 @@ func New(config *Config) (*Authenticator, error) {
 func (a *Authenticator) Authenticate(r *http.Request) (string, error) {
 	// TODO:
 	// 1. Check if Authorization header is present
-	authzHeader := r.Header.Get("Authorization")
+	headers := r.Header["Authorization"]
+	if len(headers) == 0 {
+		return "", errors.New("the Authorization header was not provided")
+	}
+	if len(headers) > 1 {
+		return "", errors.New("received multiple Authorization headers, but expected only one")
+	}
+
+	authzHeader := headers[0]
 	if authzHeader == "" {
 		return "", errors.New("the Authorization header was not provided")
 	}
@@ -92,7 +113,7 @@ func (a *Authenticator) Authenticate(r *http.Request) (string, error) {
 	// 4. Authenticate user with provided token
 	// 5. Get username
 	// 6. Store username in context
-	return "", errors.New("not implemented")
+	return "", nil
 }
 
 // Return401 populates WWW-Authenticate header, indicating to client that authentication

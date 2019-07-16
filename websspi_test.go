@@ -5,11 +5,20 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 type stubAPI struct {
+	acquireOK  bool   // if stub should return True in simulated calls to Acquire
 	acceptOK   bool   // if stub should return True in simulated calls to Accept
 	validToken string // value that will be asumed to be a valid token
+}
+
+func (s *stubAPI) AcquireCredentialsHandle(principal string) (*CredHandle, *time.Time, error) {
+	if !s.acquireOK {
+		return nil, nil, fmt.Errorf("simulated failure of AcquireCredentialsHandle")
+	}
+	return &CredHandle{}, &time.Time{}, nil
 }
 
 func (s *stubAPI) AcceptSecurityContext(token string) error {
