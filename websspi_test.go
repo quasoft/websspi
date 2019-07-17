@@ -78,6 +78,31 @@ func TestAuthenticate_NoAuthHeader(t *testing.T) {
 	}
 }
 
+func TestAuthenticate_MultipleAuthHeaders(t *testing.T) {
+	auth := newTestAuthenticator()
+
+	r := httptest.NewRequest("GET", "http://example.local/", nil)
+	r.Header.Add("Authorization", "Negotiate a874-210004-92aa8742-09af8-bc028")
+	r.Header.Add("Authorization", "Negotiate a874-210004-92aa8742-09af8-bc029")
+
+	_, err := auth.Authenticate(r)
+	if err == nil {
+		t.Error("Authenticate() returned nil (no error) for request with multiple Authorization headers, wanted an error")
+	}
+}
+
+func TestAuthenticate_EmptyAuthHeader(t *testing.T) {
+	auth := newTestAuthenticator()
+
+	r := httptest.NewRequest("GET", "http://example.local/", nil)
+	r.Header.Set("Authorization", "")
+
+	_, err := auth.Authenticate(r)
+	if err == nil {
+		t.Error("Authenticate() returned nil (no error) for request with empty Authorization header, wanted an error")
+	}
+}
+
 func TestAuthenticate_BadAuthPrefix(t *testing.T) {
 	auth := newTestAuthenticator()
 

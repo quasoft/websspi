@@ -93,15 +93,15 @@ func (a *Authenticator) Authenticate(r *http.Request) (string, error) {
 	// 1. Check if Authorization header is present
 	headers := r.Header["Authorization"]
 	if len(headers) == 0 {
-		return "", errors.New("the Authorization header was not provided")
+		return "", errors.New("the Authorization header is not provided")
 	}
 	if len(headers) > 1 {
 		return "", errors.New("received multiple Authorization headers, but expected only one")
 	}
 
-	authzHeader := headers[0]
+	authzHeader := strings.TrimSpace(headers[0])
 	if authzHeader == "" {
-		return "", errors.New("the Authorization header was not provided")
+		return "", errors.New("the Authorization header is empty")
 	}
 	// 1.1. Make sure header starts with "Negotiate"
 	if !strings.HasPrefix(strings.ToLower(authzHeader), "negotiate") {
@@ -109,7 +109,7 @@ func (a *Authenticator) Authenticate(r *http.Request) (string, error) {
 	}
 
 	// 2. Extract token from Authorization header
-	authzParts := strings.Split(strings.TrimSpace(authzHeader), " ")
+	authzParts := strings.Split(authzHeader, " ")
 	if len(authzParts) < 2 {
 		return "", errors.New("the Authorization header does not contain token (gssapi-data)")
 	}
