@@ -58,8 +58,9 @@ func New(config *Config) (*Authenticator, error) {
 	api := &sspiAPI{}
 	credential, expiry, err := api.AcquireCredentialsHandle(config.KrbPrincipal)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not acquire service credentials handle: %v", err)
 	}
+	log.Printf("Credential handle expiry: %v\n", *expiry)
 
 	var auth = &Authenticator{
 		Config:     *config,
