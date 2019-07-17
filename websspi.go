@@ -12,9 +12,16 @@ import (
 	"github.com/quasoft/websspi/sspicontext"
 )
 
+type authAPI interface {
+	AcquireCredentialsHandle(principal string) (*CredHandle, *time.Time, error)
+	AcceptSecurityContext(token string) error
+	FreeCredentialsHandle(handle *CredHandle) error
+}
+
 // The Config object determines the behaviour of the Authenticator.
 type Config struct {
 	contextStore sspicontext.Store
+	authAPI      authAPI
 	KrbPrincipal string // Name of Kerberos principle used by the service
 }
 
@@ -22,6 +29,7 @@ type Config struct {
 func NewConfig() *Config {
 	return &Config{
 		contextStore: sspicontext.NewCookieStore(),
+		authAPI:      &sspiAPI{},
 	}
 }
 
@@ -31,20 +39,16 @@ func (c *Config) Validate() error {
 	if c.contextStore == nil {
 		return errors.New("Store for context handles not specified in Config")
 	}
+	if c.authAPI == nil {
+		return errors.New("Authentication API not specified in Config")
+	}
 	return nil
-}
-
-type authAPI interface {
-	AcquireCredentialsHandle(principal string) (*CredHandle, *time.Time, error)
-	AcceptSecurityContext(token string) error
-	FreeCredentialsHandle(handle *CredHandle) error
 }
 
 // The Authenticator type provides middleware methods for authentication of http requests.
 // A single authenticator object can be shared by concurrent goroutines.
 type Authenticator struct {
 	Config     Config
-	authAPI    authAPI
 	serverCred *CredHandle
 	credExpiry *time.Time
 }
@@ -56,8 +60,7 @@ func New(config *Config) (*Authenticator, error) {
 		return nil, fmt.Errorf("invalid config: %v", err)
 	}
 
-	api := &sspiAPI{}
-	credential, expiry, err := api.AcquireCredentialsHandle(config.KrbPrincipal)
+	credential, expiry, err := config.authAPI.AcquireCredentialsHandle(config.KrbPrincipal)
 	if err != nil {
 		return nil, fmt.Errorf("could not acquire service credentials handle: %v", err)
 	}
@@ -65,7 +68,6 @@ func New(config *Config) (*Authenticator, error) {
 
 	var auth = &Authenticator{
 		Config:     *config,
-		authAPI:    api,
 		serverCred: credential,
 		credExpiry: expiry,
 	}
@@ -77,7 +79,7 @@ func New(config *Config) (*Authenticator, error) {
 // it release allocated Win32 resources
 func (a *Authenticator) Free() error {
 	if a.serverCred != nil {
-		err := a.authAPI.FreeCredentialsHandle(a.serverCred)
+		err := a.Config.authAPI.FreeCredentialsHandle(a.serverCred)
 		if err != nil {
 			return err
 		}

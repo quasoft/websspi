@@ -49,6 +49,7 @@ func (s *stubContextStore) SetHandle(r *http.Request, w http.ResponseWriter, con
 func newTestAuthenticator() *Authenticator {
 	config := Config{
 		contextStore: &stubContextStore{},
+		authAPI:      &stubAPI{true, true, "a87421000492aa874209af8bc028"},
 		KrbPrincipal: "service@test.local",
 	}
 	auth := Authenticator{
