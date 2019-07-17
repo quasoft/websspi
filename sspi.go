@@ -46,3 +46,11 @@ func (s *sspiAPI) AcquireCredentialsHandle(principal string) (*CredHandle, *time
 func (s *sspiAPI) AcceptSecurityContext(token string) error {
 	return errors.New("not implemented")
 }
+
+func (s *sspiAPI) FreeCredentialsHandle(handle *CredHandle) error {
+	status := FreeCredentialsHandle(handle)
+	if status != SEC_E_OK {
+		return fmt.Errorf("call to FreeCredentialsHandle failed with code %d", status)
+	}
+	return nil
+}

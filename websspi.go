@@ -37,6 +37,7 @@ func (c *Config) Validate() error {
 type authAPI interface {
 	AcquireCredentialsHandle(principal string) (*CredHandle, *time.Time, error)
 	AcceptSecurityContext(token string) error
+	FreeCredentialsHandle(handle *CredHandle) error
 }
 
 // The Authenticator type provides middleware methods for authentication of http requests.
@@ -70,6 +71,18 @@ func New(config *Config) (*Authenticator, error) {
 	}
 
 	return auth, nil
+}
+
+// Free method should be called before shutting down the server to let
+// it release allocated Win32 resources
+func (a *Authenticator) Free() error {
+	if a.serverCred != nil {
+		err := a.authAPI.FreeCredentialsHandle(a.serverCred)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Authenticate tries to authenticate the HTTP request and returns nil
