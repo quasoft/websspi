@@ -28,6 +28,10 @@ func (s *stubAPI) AcceptSecurityContext(token string) error {
 	return nil
 }
 
+func (s *stubAPI) FreeCredentialsHandle(handle *CredHandle) error {
+	return nil
+}
+
 type stubContextStore struct {
 	contextHandle interface{}
 }
