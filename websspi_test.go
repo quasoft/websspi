@@ -46,17 +46,35 @@ func (s *stubContextStore) SetHandle(r *http.Request, w http.ResponseWriter, con
 }
 
 // newTestAuthenticator creates an Authenticator for use in tests.
-func newTestAuthenticator() *Authenticator {
+func newTestAuthenticator(t *testing.T) *Authenticator {
 	config := Config{
 		contextStore: &stubContextStore{},
 		authAPI:      &stubAPI{true, true, "a87421000492aa874209af8bc028"},
 		KrbPrincipal: "service@test.local",
 	}
-	auth := Authenticator{
-		Config:  config,
-		authAPI: &stubAPI{},
+	auth, err := New(&config)
+	if err != nil {
+		t.Errorf("could not create new authenticator: %s", err)
 	}
-	return &auth
+	return auth
+}
+
+func TestConfigValidate_NoContextStore(t *testing.T) {
+	config := NewConfig()
+	config.contextStore = nil
+	err := config.Validate()
+	if err == nil {
+		t.Errorf("Config.Validate() returned nil (no error) when contextStore was nil, wanted error")
+	}
+}
+
+func TestConfigValidate_NoAuthAPI(t *testing.T) {
+	config := NewConfig()
+	config.authAPI = nil
+	err := config.Validate()
+	if err == nil {
+		t.Errorf("Config.Validate() returned nil (no error) when authAPI was nil, wanted error")
+	}
 }
 
 func TestConfigValidate_Complete(t *testing.T) {
@@ -64,12 +82,31 @@ func TestConfigValidate_Complete(t *testing.T) {
 	config.KrbPrincipal = "service@test.local"
 	err := config.Validate()
 	if err != nil {
-		t.Errorf("Config.Validate() = false for a valid config, want true")
+		t.Errorf("Config.Validate() returned error for a valid config, wanted nil (no error)")
+	}
+}
+
+func TestNewAuthenticator_InvalidConfig(t *testing.T) {
+	_, err := New(&Config{})
+	if err == nil {
+		t.Errorf("New() returns nil (no error) when Config was not valid, wanted error")
+	}
+}
+
+func TestNewAuthenticator_ErrorOnAcquire(t *testing.T) {
+	config := Config{
+		contextStore: &stubContextStore{},
+		authAPI:      &stubAPI{acquireOK: false},
+		KrbPrincipal: "service@test.local",
+	}
+	_, err := New(&config)
+	if err == nil {
+		t.Errorf("New() returns nil (no error) when AcquireCredentialHandle fails, wanted error")
 	}
 }
 
 func TestAuthenticate_NoAuthHeader(t *testing.T) {
-	auth := newTestAuthenticator()
+	auth := newTestAuthenticator(t)
 
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 
@@ -80,7 +117,7 @@ func TestAuthenticate_NoAuthHeader(t *testing.T) {
 }
 
 func TestAuthenticate_MultipleAuthHeaders(t *testing.T) {
-	auth := newTestAuthenticator()
+	auth := newTestAuthenticator(t)
 
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Add("Authorization", "Negotiate a874-210004-92aa8742-09af8-bc028")
@@ -93,7 +130,7 @@ func TestAuthenticate_MultipleAuthHeaders(t *testing.T) {
 }
 
 func TestAuthenticate_EmptyAuthHeader(t *testing.T) {
-	auth := newTestAuthenticator()
+	auth := newTestAuthenticator(t)
 
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "")
@@ -105,7 +142,7 @@ func TestAuthenticate_EmptyAuthHeader(t *testing.T) {
 }
 
 func TestAuthenticate_BadAuthPrefix(t *testing.T) {
-	auth := newTestAuthenticator()
+	auth := newTestAuthenticator(t)
 
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "auth: neg")
@@ -117,7 +154,7 @@ func TestAuthenticate_BadAuthPrefix(t *testing.T) {
 }
 
 func TestAuthenticate_EmptyToken(t *testing.T) {
-	auth := newTestAuthenticator()
+	auth := newTestAuthenticator(t)
 
 	tests := []struct {
 		name  string
@@ -144,7 +181,7 @@ func TestAuthenticate_EmptyToken(t *testing.T) {
 }
 
 func TestAuthenticate_BadBase64(t *testing.T) {
-	auth := newTestAuthenticator()
+	auth := newTestAuthenticator(t)
 
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "Negotiate a874-210004-92aa8742-09af8-bc028")
@@ -156,7 +193,7 @@ func TestAuthenticate_BadBase64(t *testing.T) {
 }
 
 func TestAuthenticate_ValidBase64(t *testing.T) {
-	auth := newTestAuthenticator()
+	auth := newTestAuthenticator(t)
 
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
@@ -171,9 +208,7 @@ func TestAuthenticate_ValidBase64(t *testing.T) {
 }
 
 func TestAuthenticate_ValidToken(t *testing.T) {
-	auth := newTestAuthenticator()
-	auth.authAPI.(*stubAPI).acceptOK = true
-	auth.authAPI.(*stubAPI).validToken = "a87421000492aa874209af8bc028"
+	auth := newTestAuthenticator(t)
 
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
@@ -188,9 +223,7 @@ func TestAuthenticate_ValidToken(t *testing.T) {
 }
 
 func TestWithAuth_ValidToken(t *testing.T) {
-	auth := newTestAuthenticator()
-	auth.authAPI.(*stubAPI).acceptOK = true
-	auth.authAPI.(*stubAPI).validToken = "a87421000492aa874209af8bc028"
+	auth := newTestAuthenticator(t)
 
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
@@ -202,6 +235,8 @@ func TestWithAuth_ValidToken(t *testing.T) {
 	})
 	protectedHandler := auth.WithAuth(handler)
 	protectedHandler.ServeHTTP(w, r)
+
+	_ = auth.Free()
 
 	code := w.Result().StatusCode
 	if code != http.StatusOK {
