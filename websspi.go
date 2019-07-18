@@ -14,7 +14,7 @@ import (
 
 type authAPI interface {
 	AcquireCredentialsHandle(principal string) (*CredHandle, *time.Time, error)
-	AcceptSecurityContext(token string) error
+	AcceptSecurityContext(credential *CredHandle, context *CtxtHandle, input []byte) (newCtx *CtxtHandle, out []byte, exp *time.Time, status SECURITY_STATUS, err error)
 	FreeCredentialsHandle(handle *CredHandle) error
 }
 
@@ -127,6 +127,7 @@ func (a *Authenticator) Authenticate(r *http.Request) (string, error) {
 	}
 
 	// 4. Authenticate user with provided token
+
 	// 5. Get username
 	// 6. Store username in context
 	return "", nil

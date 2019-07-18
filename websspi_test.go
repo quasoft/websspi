@@ -9,23 +9,20 @@ import (
 )
 
 type stubAPI struct {
-	acquireOK  bool   // if stub should return True in simulated calls to Acquire
-	acceptOK   bool   // if stub should return True in simulated calls to Accept
-	validToken string // value that will be asumed to be a valid token
+	acquireStatus SECURITY_STATUS // if stub should return True in simulated calls to Acquire
+	acceptStatus  SECURITY_STATUS // if stub should return True in simulated calls to Accept
+	validToken    string          // value that will be asumed to be a valid token
 }
 
 func (s *stubAPI) AcquireCredentialsHandle(principal string) (*CredHandle, *time.Time, error) {
-	if !s.acquireOK {
+	if s.acquireStatus != SEC_E_OK {
 		return nil, nil, fmt.Errorf("simulated failure of AcquireCredentialsHandle")
 	}
 	return &CredHandle{}, &time.Time{}, nil
 }
 
-func (s *stubAPI) AcceptSecurityContext(token string) error {
-	if !s.acceptOK {
-		return fmt.Errorf("simulated failure of AcceptSecurityContext")
-	}
-	return nil
+func (s *stubAPI) AcceptSecurityContext(credential *CredHandle, context *CtxtHandle, input []byte) (newCtx *CtxtHandle, out string, exp *time.Time, status SECURITY_STATUS, err error) {
+	return nil, "", nil, s.acceptStatus, fmt.Errorf("simulated failure of AcceptSecurityContext")
 }
 
 func (s *stubAPI) FreeCredentialsHandle(handle *CredHandle) error {
@@ -49,7 +46,7 @@ func (s *stubContextStore) SetHandle(r *http.Request, w http.ResponseWriter, con
 func newTestAuthenticator(t *testing.T) *Authenticator {
 	config := Config{
 		contextStore: &stubContextStore{},
-		authAPI:      &stubAPI{true, true, "a87421000492aa874209af8bc028"},
+		authAPI:      &stubAPI{SEC_E_OK, SEC_E_OK, "a87421000492aa874209af8bc028"},
 		KrbPrincipal: "service@test.local",
 	}
 	auth, err := New(&config)
@@ -96,7 +93,7 @@ func TestNewAuthenticator_InvalidConfig(t *testing.T) {
 func TestNewAuthenticator_ErrorOnAcquire(t *testing.T) {
 	config := Config{
 		contextStore: &stubContextStore{},
-		authAPI:      &stubAPI{acquireOK: false},
+		authAPI:      &stubAPI{acquireStatus: SEC_E_INSUFFICIENT_MEMORY},
 		KrbPrincipal: "service@test.local",
 	}
 	_, err := New(&config)

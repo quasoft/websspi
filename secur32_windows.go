@@ -61,6 +61,9 @@ const (
 	SECPKG_ATTR_NEGOTIATION_INFO = 12
 	SECPKG_ATTR_NATIVE_NAMES     = 13
 	SECPKG_ATTR_FLAGS            = 14
+
+	SECBUFFER_VERSION = 0
+	SECBUFFER_TOKEN   = 2
 )
 
 type CredHandle struct {
