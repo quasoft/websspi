@@ -21,8 +21,8 @@ func (s *stubAPI) AcquireCredentialsHandle(principal string) (*CredHandle, *time
 	return &CredHandle{}, &time.Time{}, nil
 }
 
-func (s *stubAPI) AcceptSecurityContext(credential *CredHandle, context *CtxtHandle, input []byte) (newCtx *CtxtHandle, out string, exp *time.Time, status SECURITY_STATUS, err error) {
-	return nil, "", nil, s.acceptStatus, fmt.Errorf("simulated failure of AcceptSecurityContext")
+func (s *stubAPI) AcceptSecurityContext(credential *CredHandle, context *CtxtHandle, input []byte) (newCtx *CtxtHandle, out []byte, exp *time.Time, status SECURITY_STATUS, err error) {
+	return nil, nil, nil, s.acceptStatus, fmt.Errorf("simulated failure of AcceptSecurityContext")
 }
 
 func (s *stubAPI) FreeCredentialsHandle(handle *CredHandle) error {
