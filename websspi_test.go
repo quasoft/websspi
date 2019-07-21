@@ -110,7 +110,7 @@ func TestAuthenticate_NoAuthHeader(t *testing.T) {
 
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 
-	_, err := auth.Authenticate(r)
+	_, err := auth.Authenticate(r, nil)
 	if err == nil {
 		t.Error("Authenticate() returned nil (no error) for request without Authorization header, wanted an error")
 	}
@@ -123,7 +123,7 @@ func TestAuthenticate_MultipleAuthHeaders(t *testing.T) {
 	r.Header.Add("Authorization", "Negotiate a874-210004-92aa8742-09af8-bc028")
 	r.Header.Add("Authorization", "Negotiate a874-210004-92aa8742-09af8-bc029")
 
-	_, err := auth.Authenticate(r)
+	_, err := auth.Authenticate(r, nil)
 	if err == nil {
 		t.Error("Authenticate() returned nil (no error) for request with multiple Authorization headers, wanted an error")
 	}
@@ -135,7 +135,7 @@ func TestAuthenticate_EmptyAuthHeader(t *testing.T) {
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "")
 
-	_, err := auth.Authenticate(r)
+	_, err := auth.Authenticate(r, nil)
 	if err == nil {
 		t.Error("Authenticate() returned nil (no error) for request with empty Authorization header, wanted an error")
 	}
@@ -147,7 +147,7 @@ func TestAuthenticate_BadAuthPrefix(t *testing.T) {
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "auth: neg")
 
-	_, err := auth.Authenticate(r)
+	_, err := auth.Authenticate(r, nil)
 	if err == nil {
 		t.Error("Authenticate() returned nil (no error) for request with bad Authorization header, wanted an error")
 	}
@@ -169,7 +169,7 @@ func TestAuthenticate_EmptyToken(t *testing.T) {
 			r := httptest.NewRequest("GET", "http://example.local/", nil)
 			r.Header.Set("Authorization", tt.value)
 
-			_, err := auth.Authenticate(r)
+			_, err := auth.Authenticate(r, nil)
 			if err == nil {
 				t.Errorf(
 					"Authenticate() returned nil (no error) for request with bad Authorization header (%v), wanted an error",
@@ -186,7 +186,7 @@ func TestAuthenticate_BadBase64(t *testing.T) {
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "Negotiate a874-210004-92aa8742-09af8-bc028")
 
-	_, err := auth.Authenticate(r)
+	_, err := auth.Authenticate(r, nil)
 	if err == nil {
 		t.Error("Authenticate() returned nil (no error) for request with token that is not valid base64 string, wanted an error")
 	}
@@ -198,7 +198,7 @@ func TestAuthenticate_ValidBase64(t *testing.T) {
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
 
-	_, err := auth.Authenticate(r)
+	_, err := auth.Authenticate(r, nil)
 	if err != nil {
 		t.Errorf(
 			"Authenticate() returned error %q for request with valid base64 string, wanted nil (no error)",
@@ -213,7 +213,7 @@ func TestAuthenticate_ValidToken(t *testing.T) {
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
 
-	_, err := auth.Authenticate(r)
+	_, err := auth.Authenticate(r, nil)
 	if err != nil {
 		t.Errorf(
 			"Authenticate() with valid token returned error %q, wanted nil (no error)",

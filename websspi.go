@@ -90,7 +90,7 @@ func (a *Authenticator) Free() error {
 // Authenticate tries to authenticate the HTTP request and returns nil
 // if authentication was successful.
 // Returns error and data for continuation if authentication was not successful.
-func (a *Authenticator) Authenticate(r *http.Request) (string, error) {
+func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (string, error) {
 	// TODO:
 	// 1. Check if Authorization header is present
 	headers := r.Header["Authorization"]
@@ -121,12 +121,31 @@ func (a *Authenticator) Authenticate(r *http.Request) (string, error) {
 	}
 
 	// 3. Decode token
-	_, err := base64.StdEncoding.DecodeString(token)
+	input, err := base64.StdEncoding.DecodeString(token)
 	if err != nil {
 		return "", errors.New("could not decode token as base64 string")
 	}
 
 	// 4. Authenticate user with provided token
+	handle, err := a.Config.contextStore.GetHandle(r)
+	if err != nil {
+		return "", fmt.Errorf("could not get context handle from store: %s", err)
+	}
+	contextHandle, ok := handle.(*CtxtHandle)
+	if !ok {
+		contextHandle = nil
+	}
+	newCtx, _, _, status, err := a.Config.authAPI.AcceptSecurityContext(
+		a.serverCred,
+		contextHandle,
+		input,
+	)
+	if newCtx != nil {
+		a.Config.contextStore.SetHandle(r, w, newCtx)
+	}
+	if err != nil {
+		return "", fmt.Errorf("AcceptSecurityContext failed with status %d; error: %s", status, err)
+	}
 
 	// 5. Get username
 	// 6. Store username in context
@@ -156,7 +175,7 @@ func (a *Authenticator) WithAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Authenticating request to %s\n", r.RequestURI)
 
-		data, err := a.Authenticate(r)
+		data, err := a.Authenticate(r, w)
 		if err != nil {
 			log.Printf("Authentication failed with error: %v\n", err)
 			a.Return401(w, data)
