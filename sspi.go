@@ -81,11 +81,10 @@ func (s *sspiAPI) AcceptSecurityContext(credential *CredHandle, context *CtxtHan
 	if status == SEC_E_OK || status == SEC_I_CONTINUE_NEEDED || status == SEC_I_COMPLETE_AND_CONTINUE {
 		// Copy outputBuf.Buffer to out and free the outputBuf.Buffer
 		out = make([]byte, outputBuf.BufferSize)
-		bytes := *(*[]byte)(unsafe.Pointer(outputBuf.Buffer))
-		copied := copy(out, bytes)
-		if copied != outputBuf.BufferSize {
-			err = fmt.Errorf("could not copy output data, copied %d from %d bytes", copied, outputBuf.BufferSize)
-			return
+		var bufPtr = uintptr(unsafe.Pointer(outputBuf.Buffer))
+		for i := 0; i < len(out); i++ {
+			out[i] = *(*byte)(unsafe.Pointer(bufPtr))
+			bufPtr++
 		}
 		freeStatus := FreeContextBuffer(outputBuf.Buffer)
 		if freeStatus != SEC_E_OK {
