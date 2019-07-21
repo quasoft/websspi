@@ -22,7 +22,10 @@ func (s *stubAPI) AcquireCredentialsHandle(principal string) (*CredHandle, *time
 }
 
 func (s *stubAPI) AcceptSecurityContext(credential *CredHandle, context *CtxtHandle, input []byte) (newCtx *CtxtHandle, out []byte, exp *time.Time, status SECURITY_STATUS, err error) {
-	return nil, nil, nil, s.acceptStatus, fmt.Errorf("simulated failure of AcceptSecurityContext")
+	if s.acquireStatus != SEC_E_OK {
+		return nil, nil, nil, s.acceptStatus, fmt.Errorf("simulated failure of AcceptSecurityContext")
+	}
+	return nil, nil, nil, s.acceptStatus, nil
 }
 
 func (s *stubAPI) FreeCredentialsHandle(handle *CredHandle) error {
