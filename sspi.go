@@ -64,6 +64,7 @@ func (s *sspiAPI) AcceptSecurityContext(credential *CredHandle, context *CtxtHan
 
 	var expiry syscall.Filetime
 	var contextAttr uint32
+	var newContextHandle CtxtHandle
 
 	status = AcceptSecurityContext(
 		credential,
@@ -71,11 +72,14 @@ func (s *sspiAPI) AcceptSecurityContext(credential *CredHandle, context *CtxtHan
 		&inputDesc,
 		ASC_REQ_ALLOCATE_MEMORY|ASC_REQ_MUTUAL_AUTH, // contextReq uint32,
 		SECURITY_NATIVE_DREP,                        // targDataRep uint32,
-		newCtx,
+		&newContextHandle,
 		&outputDesc,  // *SecBufferDesc
 		&contextAttr, // contextAttr *uint32,
 		&expiry,      // *syscall.Filetime
 	)
+	if newContextHandle.Lower != 0 || newContextHandle.Upper != 0 {
+		newCtx = &newContextHandle
+	}
 	tm := time.Unix(0, expiry.Nanoseconds())
 	exp = &tm
 	if status == SEC_E_OK || status == SEC_I_CONTINUE_NEEDED || status == SEC_I_COMPLETE_AND_CONTINUE {
