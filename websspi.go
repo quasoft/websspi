@@ -128,21 +128,27 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (st
 	}
 
 	// 4. Authenticate user with provided token
-	handle, err := a.Config.contextStore.GetHandle(r)
+	sessionHandle, err := a.Config.contextStore.GetHandle(r)
 	if err != nil {
 		return "", fmt.Errorf("could not get context handle from store: %s", err)
 	}
-	contextHandle, ok := handle.(*CtxtHandle)
-	if !ok {
-		contextHandle = nil
+	var contextHandle *CtxtHandle
+	if contextHandle, ok := sessionHandle.(*CtxtHandle); ok {
+		log.Printf("CtxHandle: 0x%x\n", *contextHandle)
+	} else {
+		log.Printf("CtxHandle: nil\n")
 	}
-	newCtx, _, _, status, err := a.Config.authAPI.AcceptSecurityContext(
+	newCtx, output, _, status, err := a.Config.authAPI.AcceptSecurityContext(
 		a.serverCred,
 		contextHandle,
 		input,
 	)
+	log.Printf("Accept status: 0x%x\n", status)
 	if newCtx != nil {
 		a.Config.contextStore.SetHandle(r, w, newCtx)
+		log.Printf("New context: 0x%x\n", *newCtx)
+	} else {
+		log.Printf("New context: nil\n")
 	}
 	if err != nil {
 		return "", fmt.Errorf("AcceptSecurityContext failed with status 0x%x; error: %s", status, err)
