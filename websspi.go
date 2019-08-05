@@ -2,6 +2,7 @@ package websspi
 
 import (
 	"encoding/base64"
+	"encoding/gob"
 	"errors"
 	"fmt"
 	"log"
@@ -189,4 +190,8 @@ func (a *Authenticator) WithAuth(next http.Handler) http.Handler {
 		log.Print("Authenticated\n")
 		next.ServeHTTP(w, r)
 	})
+}
+
+func init() {
+	gob.Register(&CtxtHandle{})
 }
