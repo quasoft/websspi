@@ -37,7 +37,7 @@ func (s *sspiAPI) AcquireCredentialsHandle(principal string) (*CredHandle, *time
 		&expiry,
 	)
 	if status != SEC_E_OK {
-		return nil, nil, fmt.Errorf("call to AcquireCredentialsHandle failed with code %d", status)
+		return nil, nil, fmt.Errorf("call to AcquireCredentialsHandle failed with code 0x%x", status)
 	}
 	expiryTime := time.Unix(0, expiry.Nanoseconds())
 	return &handle, &expiryTime, nil
@@ -89,7 +89,7 @@ func (s *sspiAPI) AcceptSecurityContext(credential *CredHandle, context *CtxtHan
 		freeStatus := FreeContextBuffer(outputBuf.Buffer)
 		if freeStatus != SEC_E_OK {
 			status = freeStatus
-			err = fmt.Errorf("could not free output buffer; FreeContextBuffer() failed with code: %d", freeStatus)
+			err = fmt.Errorf("could not free output buffer; FreeContextBuffer() failed with code: 0x%x", freeStatus)
 			return
 		}
 	}
@@ -101,7 +101,7 @@ func (s *sspiAPI) AcceptSecurityContext(credential *CredHandle, context *CtxtHan
 	}
 	if status != SEC_E_OK && status != SEC_I_CONTINUE_NEEDED &&
 		status != SEC_I_COMPLETE_NEEDED && status != SEC_I_COMPLETE_AND_CONTINUE {
-		err = fmt.Errorf("call to AcceptSecurityContext failed with code %d", status)
+		err = fmt.Errorf("call to AcceptSecurityContext failed with code 0x%x", status)
 		return
 	}
 	// TODO: Return contextAttr?
@@ -111,7 +111,7 @@ func (s *sspiAPI) AcceptSecurityContext(credential *CredHandle, context *CtxtHan
 func (s *sspiAPI) FreeCredentialsHandle(handle *CredHandle) error {
 	status := FreeCredentialsHandle(handle)
 	if status != SEC_E_OK {
-		return fmt.Errorf("call to FreeCredentialsHandle failed with code %d", status)
+		return fmt.Errorf("call to FreeCredentialsHandle failed with code 0x%x", status)
 	}
 	return nil
 }

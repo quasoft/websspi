@@ -144,7 +144,11 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (st
 		a.Config.contextStore.SetHandle(r, w, newCtx)
 	}
 	if err != nil {
-		return "", fmt.Errorf("AcceptSecurityContext failed with status %d; error: %s", status, err)
+		return "", fmt.Errorf("AcceptSecurityContext failed with status 0x%x; error: %s", status, err)
+	}
+	if status == SEC_I_CONTINUE_NEEDED {
+		// Negotiation should continue by sending the output data back to the client
+		return base64.StdEncoding.EncodeToString(output), errors.New("Negotiation should continue")
 	}
 
 	// 5. Get username
