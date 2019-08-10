@@ -7,47 +7,6 @@ import (
 	"unsafe"
 )
 
-// PrepareCredentials method acquires a credentials handle for the specified principal
-// for use during the live of the application.
-// On success stores the handle in the serverCred field and its expiry time in the
-// credExpiry field.
-// This method must be called once - when the application is starting or when the first
-// request from a client is received.
-func (a *Authenticator) PrepareCredentials(principal string) error {
-	var principalPtr *uint16
-	if principal != "" {
-		var err error
-		principalPtr, err = syscall.UTF16PtrFromString(principal)
-		if err != nil {
-			return err
-		}
-	}
-	credentialUsePtr, err := syscall.UTF16PtrFromString(NEGOSSP_NAME)
-	if err != nil {
-		return err
-	}
-	var handle CredHandle
-	var expiry syscall.Filetime
-	status := a.Config.authAPI.AcquireCredentialsHandle(
-		principalPtr,
-		credentialUsePtr,
-		SECPKG_CRED_INBOUND,
-		nil, // logonId
-		nil, // authData
-		0,   // getKeyFn
-		0,   // getKeyArgument
-		&handle,
-		&expiry,
-	)
-	if status != SEC_E_OK {
-		return fmt.Errorf("call to AcquireCredentialsHandle failed with code 0x%x", status)
-	}
-	expiryTime := time.Unix(0, expiry.Nanoseconds())
-	a.credExpiry = &expiryTime
-	a.serverCred = &handle
-	return nil
-}
-
 func (a *Authenticator) AcceptSecurityContext(credential *CredHandle, context *CtxtHandle, input []byte) (newCtx *CtxtHandle, out []byte, exp *time.Time, status SECURITY_STATUS, err error) {
 	var inputDesc SecBufferDesc
 	var inputBuf SecBuffer
