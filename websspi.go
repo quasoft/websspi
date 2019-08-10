@@ -59,13 +59,11 @@ func New(config *Config) (*Authenticator, error) {
 		Config: *config,
 	}
 
-	credential, expiry, err := auth.AcquireCredentialsHandle(config.KrbPrincipal)
+	err = auth.PrepareCredentials(config.KrbPrincipal)
 	if err != nil {
-		return nil, fmt.Errorf("could not acquire service credentials handle: %v", err)
+		return nil, fmt.Errorf("could not acquire credentials handle for the service: %v", err)
 	}
-	auth.credExpiry = expiry
-	auth.serverCred = credential
-	log.Printf("Credential handle expiry: %v\n", *expiry)
+	log.Printf("Credential handle expiry: %v\n", *auth.credExpiry)
 
 	return auth, nil
 }
