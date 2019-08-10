@@ -8,12 +8,12 @@ import (
 )
 
 type stubAPI struct {
-	acquireStatus    SECURITY_STATUS // if stub should return True in simulated calls to AcquireCredentialsHandle
-	acceptStatus     SECURITY_STATUS // if stub should return True in simulated calls to AcceptSecurityContext
-	deleteStatus     SECURITY_STATUS // if stub should return True in simulated calls to DeleteSecurityContext
-	queryStatus      SECURITY_STATUS // if stub should return True in simulated calls to QueryContextAttributes
-	freeBufferStatus SECURITY_STATUS // if stub should return True in simulated calls to FreeContextBuffer
-	freeCredsStatus  SECURITY_STATUS // if stub should return True in simulated calls to FreeCredentialsHandle
+	acquireStatus    SECURITY_STATUS // the status code that should be returned in simulated calls to AcquireCredentialsHandle
+	acceptStatus     SECURITY_STATUS // the status code that should be returned in simulated calls to AcceptSecurityContext
+	deleteStatus     SECURITY_STATUS // the status code that should be returned in simulated calls to DeleteSecurityContext
+	queryStatus      SECURITY_STATUS // the status code that should be returned in simulated calls to QueryContextAttributes
+	freeBufferStatus SECURITY_STATUS // the status code that should be returned in simulated calls to FreeContextBuffer
+	freeCredsStatus  SECURITY_STATUS // the status code that should be returned in simulated calls to FreeCredentialsHandle
 	validToken       string          // value that will be asumed to be a valid token
 }
 
