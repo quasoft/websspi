@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/quasoft/websspi/sspicontext"
@@ -172,11 +173,7 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (st
 	} else {
 		log.Printf("CtxHandle: nil\n")
 	}
-	newCtx, output, _, status, err := a.AcceptSecurityContext(
-		a.serverCred,
-		contextHandle,
-		input,
-	)
+	newCtx, output, _, status, err := a.AcceptOrContinue(contextHandle, input)
 	log.Printf("Accept status: 0x%x\n", status)
 	if newCtx != nil {
 		a.Config.contextStore.SetHandle(r, w, newCtx)

@@ -7,7 +7,7 @@ import (
 	"unsafe"
 )
 
-func (a *Authenticator) AcceptSecurityContext(credential *CredHandle, context *CtxtHandle, input []byte) (newCtx *CtxtHandle, out []byte, exp *time.Time, status SECURITY_STATUS, err error) {
+func (a *Authenticator) AcceptOrContinue(context *CtxtHandle, input []byte) (newCtx *CtxtHandle, out []byte, exp *time.Time, status SECURITY_STATUS, err error) {
 	var inputDesc SecBufferDesc
 	var inputBuf SecBuffer
 	inputDesc.BuffersCount = 1
@@ -31,7 +31,7 @@ func (a *Authenticator) AcceptSecurityContext(credential *CredHandle, context *C
 	var newContextHandle CtxtHandle
 
 	status = a.Config.authAPI.AcceptSecurityContext(
-		credential,
+		a.serverCred,
 		context,
 		&inputDesc,
 		ASC_REQ_ALLOCATE_MEMORY|ASC_REQ_MUTUAL_AUTH, // contextReq uint32,
