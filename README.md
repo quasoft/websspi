@@ -1,6 +1,6 @@
 # websspi
 
-*Note: Work in progress! Does **not** compile, **not** completed, **not** tested! (yet)*
+*Note: Work in progress! **Not** completed, compiles, but is partially tested! (yet)*
 
 `websspi` will be an HTTP middleware for Golang that uses Kerberos for single sign-on (SSO) authentication of browser based clients in a Windows environment.
 
