@@ -93,6 +93,41 @@ type LUID struct {
 	HighPart int32
 }
 
+// The API interface describes the functions from secur32 used in this package and
+// its primary purpose is to allow replacing them with stub functions in unit tests.
+type API interface {
+	AcquireCredentialsHandle(
+		principal *uint16,
+		_package *uint16,
+		credentialUse uint32,
+		logonID *LUID,
+		authData *byte,
+		getKeyFn uintptr,
+		getKeyArgument uintptr,
+		credHandle *CredHandle,
+		expiry *syscall.Filetime,
+	) SECURITY_STATUS
+	AcceptSecurityContext(
+		credential *CredHandle,
+		context *CtxtHandle,
+		input *SecBufferDesc,
+		contextReq uint32,
+		targDataRep uint32,
+		newContext *CtxtHandle,
+		output *SecBufferDesc,
+		contextAttr *uint32,
+		expiry *syscall.Filetime,
+	) SECURITY_STATUS
+	QueryContextAttributes(context *CtxtHandle, attribute uint32, buffer *byte) SECURITY_STATUS
+	DeleteSecurityContext(context *CtxtHandle) SECURITY_STATUS
+	FreeContextBuffer(buffer *byte) SECURITY_STATUS
+	FreeCredentialsHandle(handle *CredHandle) SECURITY_STATUS
+}
+
+// Secur32 implements the API interface by calling the relevant win32 functions
+// from the secur32 dll.
+type Secur32 struct{}
+
 var (
 	secur32dll = windows.NewLazySystemDLL("secur32.dll")
 
@@ -104,7 +139,7 @@ var (
 	procFreeCredentialsHandle     = secur32dll.NewProc("FreeCredentialsHandle")
 )
 
-func AcquireCredentialsHandle(
+func (s *Secur32) AcquireCredentialsHandle(
 	principal *uint16,
 	_package *uint16,
 	credentialUse uint32,
@@ -130,7 +165,7 @@ func AcquireCredentialsHandle(
 	return SECURITY_STATUS(r1)
 }
 
-func AcceptSecurityContext(
+func (s *Secur32) AcceptSecurityContext(
 	credential *CredHandle,
 	context *CtxtHandle,
 	input *SecBufferDesc,
@@ -156,7 +191,7 @@ func AcceptSecurityContext(
 	return SECURITY_STATUS(r1)
 }
 
-func QueryContextAttributes(
+func (s *Secur32) QueryContextAttributes(
 	context *CtxtHandle,
 	attribute uint32,
 	buffer *byte,
@@ -170,7 +205,7 @@ func QueryContextAttributes(
 	return SECURITY_STATUS(r1)
 }
 
-func DeleteSecurityContext(context *CtxtHandle) SECURITY_STATUS {
+func (s *Secur32) DeleteSecurityContext(context *CtxtHandle) SECURITY_STATUS {
 	r1, _, _ := syscall.Syscall(
 		procDeleteSecurityContext.Addr(), 1,
 		uintptr(unsafe.Pointer(context)),
@@ -179,7 +214,7 @@ func DeleteSecurityContext(context *CtxtHandle) SECURITY_STATUS {
 	return SECURITY_STATUS(r1)
 }
 
-func FreeContextBuffer(buffer *byte) SECURITY_STATUS {
+func (s *Secur32) FreeContextBuffer(buffer *byte) SECURITY_STATUS {
 	r1, _, _ := syscall.Syscall(
 		procFreeContextBuffer.Addr(), 1,
 		uintptr(unsafe.Pointer(buffer)),
@@ -188,7 +223,7 @@ func FreeContextBuffer(buffer *byte) SECURITY_STATUS {
 	return SECURITY_STATUS(r1)
 }
 
-func FreeCredentialsHandle(handle *CredHandle) SECURITY_STATUS {
+func (s *Secur32) FreeCredentialsHandle(handle *CredHandle) SECURITY_STATUS {
 	r1, _, _ := syscall.Syscall(
 		procFreeCredentialsHandle.Addr(), 1,
 		uintptr(unsafe.Pointer(handle)),

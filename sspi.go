@@ -7,10 +7,7 @@ import (
 	"unsafe"
 )
 
-type sspiAPI struct {
-}
-
-func (s *sspiAPI) AcquireCredentialsHandle(principal string) (*CredHandle, *time.Time, error) {
+func (a *Authenticator) AcquireCredentialsHandle(principal string) (*CredHandle, *time.Time, error) {
 	var principalPtr *uint16
 	if principal != "" {
 		var err error
@@ -25,7 +22,7 @@ func (s *sspiAPI) AcquireCredentialsHandle(principal string) (*CredHandle, *time
 	}
 	var handle CredHandle
 	var expiry syscall.Filetime
-	status := AcquireCredentialsHandle(
+	status := a.Config.authAPI.AcquireCredentialsHandle(
 		principalPtr,
 		credentialUsePtr,
 		SECPKG_CRED_INBOUND,
@@ -43,7 +40,7 @@ func (s *sspiAPI) AcquireCredentialsHandle(principal string) (*CredHandle, *time
 	return &handle, &expiryTime, nil
 }
 
-func (s *sspiAPI) AcceptSecurityContext(credential *CredHandle, context *CtxtHandle, input []byte) (newCtx *CtxtHandle, out []byte, exp *time.Time, status SECURITY_STATUS, err error) {
+func (a *Authenticator) AcceptSecurityContext(credential *CredHandle, context *CtxtHandle, input []byte) (newCtx *CtxtHandle, out []byte, exp *time.Time, status SECURITY_STATUS, err error) {
 	var inputDesc SecBufferDesc
 	var inputBuf SecBuffer
 	inputDesc.BuffersCount = 1
@@ -66,7 +63,7 @@ func (s *sspiAPI) AcceptSecurityContext(credential *CredHandle, context *CtxtHan
 	var contextAttr uint32
 	var newContextHandle CtxtHandle
 
-	status = AcceptSecurityContext(
+	status = a.Config.authAPI.AcceptSecurityContext(
 		credential,
 		context,
 		&inputDesc,
@@ -90,7 +87,7 @@ func (s *sspiAPI) AcceptSecurityContext(credential *CredHandle, context *CtxtHan
 			out[i] = *(*byte)(unsafe.Pointer(bufPtr))
 			bufPtr++
 		}
-		freeStatus := FreeContextBuffer(outputBuf.Buffer)
+		freeStatus := a.Config.authAPI.FreeContextBuffer(outputBuf.Buffer)
 		if freeStatus != SEC_E_OK {
 			status = freeStatus
 			err = fmt.Errorf("could not free output buffer; FreeContextBuffer() failed with code: 0x%x", freeStatus)
@@ -112,8 +109,8 @@ func (s *sspiAPI) AcceptSecurityContext(credential *CredHandle, context *CtxtHan
 	return
 }
 
-func (s *sspiAPI) FreeCredentialsHandle(handle *CredHandle) error {
-	status := FreeCredentialsHandle(handle)
+func (a *Authenticator) FreeCredentialsHandle(handle *CredHandle) error {
+	status := a.Config.authAPI.FreeCredentialsHandle(handle)
 	if status != SEC_E_OK {
 		return fmt.Errorf("call to FreeCredentialsHandle failed with code 0x%x", status)
 	}

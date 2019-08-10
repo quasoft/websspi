@@ -1,35 +1,69 @@
 package websspi
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"syscall"
 	"testing"
-	"time"
 )
 
 type stubAPI struct {
-	acquireStatus SECURITY_STATUS // if stub should return True in simulated calls to Acquire
-	acceptStatus  SECURITY_STATUS // if stub should return True in simulated calls to Accept
-	validToken    string          // value that will be asumed to be a valid token
+	acquireStatus    SECURITY_STATUS // if stub should return True in simulated calls to AcquireCredentialsHandle
+	acceptStatus     SECURITY_STATUS // if stub should return True in simulated calls to AcceptSecurityContext
+	deleteStatus     SECURITY_STATUS // if stub should return True in simulated calls to DeleteSecurityContext
+	queryStatus      SECURITY_STATUS // if stub should return True in simulated calls to QueryContextAttributes
+	freeBufferStatus SECURITY_STATUS // if stub should return True in simulated calls to FreeContextBuffer
+	freeCredsStatus  SECURITY_STATUS // if stub should return True in simulated calls to FreeCredentialsHandle
+	validToken       string          // value that will be asumed to be a valid token
 }
 
-func (s *stubAPI) AcquireCredentialsHandle(principal string) (*CredHandle, *time.Time, error) {
+func (s *stubAPI) AcquireCredentialsHandle(
+	principal *uint16,
+	_package *uint16,
+	credentialUse uint32,
+	logonId *LUID,
+	authData *byte,
+	getKeyFn uintptr,
+	getKeyArgument uintptr,
+	credHandle *CredHandle,
+	expiry *syscall.Filetime,
+) SECURITY_STATUS {
 	if s.acquireStatus != SEC_E_OK {
-		return nil, nil, fmt.Errorf("simulated failure of AcquireCredentialsHandle")
+		return s.acquireStatus
 	}
-	return &CredHandle{}, &time.Time{}, nil
+	credHandle = &CredHandle{}
+	expiry = &syscall.Filetime{}
+	return SEC_E_OK
 }
 
-func (s *stubAPI) AcceptSecurityContext(credential *CredHandle, context *CtxtHandle, input []byte) (newCtx *CtxtHandle, out []byte, exp *time.Time, status SECURITY_STATUS, err error) {
-	if s.acquireStatus != SEC_E_OK {
-		return nil, nil, nil, s.acceptStatus, fmt.Errorf("simulated failure of AcceptSecurityContext")
-	}
-	return nil, nil, nil, s.acceptStatus, nil
+func (s *stubAPI) AcceptSecurityContext(
+	credential *CredHandle,
+	context *CtxtHandle,
+	input *SecBufferDesc,
+	contextReq uint32,
+	targDataRep uint32,
+	newContext *CtxtHandle,
+	output *SecBufferDesc,
+	contextAttr *uint32,
+	expiry *syscall.Filetime,
+) SECURITY_STATUS {
+	return s.acceptStatus
 }
 
-func (s *stubAPI) FreeCredentialsHandle(handle *CredHandle) error {
-	return nil
+func (s *stubAPI) QueryContextAttributes(context *CtxtHandle, attribute uint32, buffer *byte) SECURITY_STATUS {
+	return s.queryStatus
+}
+
+func (s *stubAPI) DeleteSecurityContext(context *CtxtHandle) SECURITY_STATUS {
+	return s.deleteStatus
+}
+
+func (s *stubAPI) FreeContextBuffer(buffer *byte) SECURITY_STATUS {
+	return SEC_E_OK
+}
+
+func (s *stubAPI) FreeCredentialsHandle(handle *CredHandle) SECURITY_STATUS {
+	return SEC_E_OK
 }
 
 type stubContextStore struct {
@@ -49,7 +83,7 @@ func (s *stubContextStore) SetHandle(r *http.Request, w http.ResponseWriter, con
 func newTestAuthenticator(t *testing.T) *Authenticator {
 	config := Config{
 		contextStore: &stubContextStore{},
-		authAPI:      &stubAPI{SEC_E_OK, SEC_E_OK, "a87421000492aa874209af8bc028"},
+		authAPI:      &stubAPI{SEC_E_OK, SEC_E_OK, SEC_E_OK, SEC_E_OK, SEC_E_OK, SEC_E_OK, "a87421000492aa874209af8bc028"},
 		KrbPrincipal: "service@test.local",
 	}
 	auth, err := New(&config)

@@ -13,16 +13,10 @@ import (
 	"github.com/quasoft/websspi/sspicontext"
 )
 
-type authAPI interface {
-	AcquireCredentialsHandle(principal string) (*CredHandle, *time.Time, error)
-	AcceptSecurityContext(credential *CredHandle, context *CtxtHandle, input []byte) (newCtx *CtxtHandle, out []byte, exp *time.Time, status SECURITY_STATUS, err error)
-	FreeCredentialsHandle(handle *CredHandle) error
-}
-
 // The Config object determines the behaviour of the Authenticator.
 type Config struct {
 	contextStore sspicontext.Store
-	authAPI      authAPI
+	authAPI      API
 	KrbPrincipal string // Name of Kerberos principle used by the service
 }
 
@@ -30,7 +24,7 @@ type Config struct {
 func NewConfig() *Config {
 	return &Config{
 		contextStore: sspicontext.NewCookieStore(),
-		authAPI:      &sspiAPI{},
+		authAPI:      &Secur32{},
 	}
 }
 
@@ -61,17 +55,17 @@ func New(config *Config) (*Authenticator, error) {
 		return nil, fmt.Errorf("invalid config: %v", err)
 	}
 
-	credential, expiry, err := config.authAPI.AcquireCredentialsHandle(config.KrbPrincipal)
+	var auth = &Authenticator{
+		Config: *config,
+	}
+
+	credential, expiry, err := auth.AcquireCredentialsHandle(config.KrbPrincipal)
 	if err != nil {
 		return nil, fmt.Errorf("could not acquire service credentials handle: %v", err)
 	}
+	auth.credExpiry = expiry
+	auth.serverCred = credential
 	log.Printf("Credential handle expiry: %v\n", *expiry)
-
-	var auth = &Authenticator{
-		Config:     *config,
-		serverCred: credential,
-		credExpiry: expiry,
-	}
 
 	return auth, nil
 }
@@ -80,7 +74,7 @@ func New(config *Config) (*Authenticator, error) {
 // it release allocated Win32 resources
 func (a *Authenticator) Free() error {
 	if a.serverCred != nil {
-		err := a.Config.authAPI.FreeCredentialsHandle(a.serverCred)
+		err := a.FreeCredentialsHandle(a.serverCred)
 		if err != nil {
 			return err
 		}
@@ -138,7 +132,7 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (st
 	} else {
 		log.Printf("CtxHandle: nil\n")
 	}
-	newCtx, output, _, status, err := a.Config.authAPI.AcceptSecurityContext(
+	newCtx, output, _, status, err := a.AcceptSecurityContext(
 		a.serverCred,
 		contextHandle,
 		input,
