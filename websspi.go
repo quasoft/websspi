@@ -78,6 +78,7 @@ func (a *Authenticator) Free() error {
 		if status != SEC_E_OK {
 			return fmt.Errorf("call to FreeCredentialsHandle failed with code 0x%x", status)
 		}
+		a.serverCred = nil
 	}
 	return nil
 }
