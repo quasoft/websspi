@@ -87,6 +87,8 @@ func (a *Authenticator) AcceptSecurityContext(credential *CredHandle, context *C
 			out[i] = *(*byte)(unsafe.Pointer(bufPtr))
 			bufPtr++
 		}
+	}
+	if outputBuf.Buffer != nil {
 		freeStatus := a.Config.authAPI.FreeContextBuffer(outputBuf.Buffer)
 		if freeStatus != SEC_E_OK {
 			status = freeStatus
