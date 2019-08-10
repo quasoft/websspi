@@ -110,11 +110,3 @@ func (a *Authenticator) AcceptSecurityContext(credential *CredHandle, context *C
 	// TODO: Return contextAttr?
 	return
 }
-
-func (a *Authenticator) FreeCredentialsHandle(handle *CredHandle) error {
-	status := a.Config.authAPI.FreeCredentialsHandle(handle)
-	if status != SEC_E_OK {
-		return fmt.Errorf("call to FreeCredentialsHandle failed with code 0x%x", status)
-	}
-	return nil
-}

@@ -74,9 +74,9 @@ func New(config *Config) (*Authenticator, error) {
 // it release allocated Win32 resources
 func (a *Authenticator) Free() error {
 	if a.serverCred != nil {
-		err := a.FreeCredentialsHandle(a.serverCred)
-		if err != nil {
-			return err
+		status := a.Config.authAPI.FreeCredentialsHandle(a.serverCred)
+		if status != SEC_E_OK {
+			return fmt.Errorf("call to FreeCredentialsHandle failed with code 0x%x", status)
 		}
 	}
 	return nil
