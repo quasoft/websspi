@@ -128,6 +128,12 @@ func (a *Authenticator) Free() error {
 // function and returns and error if validation failed or continuation of the negotiation is needed.
 // No error is returned if the token was validated (user was authenticated).
 func (a *Authenticator) AcceptOrContinue(context *CtxtHandle, input []byte) (newCtx *CtxtHandle, out []byte, exp *time.Time, status SECURITY_STATUS, err error) {
+	if input == nil {
+		err = errors.New("input token cannot be nil")
+		status = SEC_E_INVALID_TOKEN
+		return
+	}
+
 	var inputDesc SecBufferDesc
 	var inputBuf SecBuffer
 	inputDesc.BuffersCount = 1

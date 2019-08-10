@@ -10,6 +10,7 @@ import (
 type stubAPI struct {
 	acquireStatus    SECURITY_STATUS // the status code that should be returned in simulated calls to AcquireCredentialsHandle
 	acceptStatus     SECURITY_STATUS // the status code that should be returned in simulated calls to AcceptSecurityContext
+	acceptNewCtx     *CtxtHandle     // the context handle to be returned in simulated calls to AcceptSecurityContext
 	deleteStatus     SECURITY_STATUS // the status code that should be returned in simulated calls to DeleteSecurityContext
 	queryStatus      SECURITY_STATUS // the status code that should be returned in simulated calls to QueryContextAttributes
 	freeBufferStatus SECURITY_STATUS // the status code that should be returned in simulated calls to FreeContextBuffer
@@ -47,6 +48,9 @@ func (s *stubAPI) AcceptSecurityContext(
 	contextAttr *uint32,
 	expiry *syscall.Filetime,
 ) SECURITY_STATUS {
+	if s.acceptNewCtx != nil {
+		*newContext = *s.acceptNewCtx
+	}
 	return s.acceptStatus
 }
 
@@ -59,11 +63,11 @@ func (s *stubAPI) DeleteSecurityContext(context *CtxtHandle) SECURITY_STATUS {
 }
 
 func (s *stubAPI) FreeContextBuffer(buffer *byte) SECURITY_STATUS {
-	return SEC_E_OK
+	return s.freeBufferStatus
 }
 
 func (s *stubAPI) FreeCredentialsHandle(handle *CredHandle) SECURITY_STATUS {
-	return SEC_E_OK
+	return s.freeCredsStatus
 }
 
 type stubContextStore struct {
@@ -83,7 +87,16 @@ func (s *stubContextStore) SetHandle(r *http.Request, w http.ResponseWriter, con
 func newTestAuthenticator(t *testing.T) *Authenticator {
 	config := Config{
 		contextStore: &stubContextStore{},
-		authAPI:      &stubAPI{SEC_E_OK, SEC_E_OK, SEC_E_OK, SEC_E_OK, SEC_E_OK, SEC_E_OK, "a87421000492aa874209af8bc028"},
+		authAPI: &stubAPI{
+			SEC_E_OK,
+			SEC_E_OK,
+			nil,
+			SEC_E_OK,
+			SEC_E_OK,
+			SEC_E_OK,
+			SEC_E_OK,
+			"a87421000492aa874209af8bc028",
+		},
 		KrbPrincipal: "service@test.local",
 	}
 	auth, err := New(&config)
@@ -136,6 +149,50 @@ func TestNewAuthenticator_ErrorOnAcquire(t *testing.T) {
 	_, err := New(&config)
 	if err == nil {
 		t.Errorf("New() returns nil (no error) when AcquireCredentialHandle fails, wanted error")
+	}
+}
+
+func TestFree_ErrorOnFreeCredentials(t *testing.T) {
+	config := Config{
+		contextStore: &stubContextStore{},
+		authAPI:      &stubAPI{freeCredsStatus: SEC_E_INVALID_HANDLE},
+		KrbPrincipal: "service@test.local",
+	}
+	auth, err := New(&config)
+	if err != nil {
+		t.Fatalf("New() failed with valid config, error: %v", err)
+	}
+	err = auth.Free()
+	if err == nil {
+		t.Error("Free() returns nil (no error) when FreeCredentialsHandle fails, wanted error")
+	}
+}
+
+func TestAcceptOrContinue_WithEmptyInput(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	auth.AcceptOrContinue(nil, nil)
+	// AcceptOrContinue should not panic on nil arguments
+}
+
+func TestAcceptOrContinue_WithoutNewContext(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	auth.Config.authAPI.(*stubAPI).acceptNewCtx = &CtxtHandle{0, 0}
+	newCtx, _, _, _, _ := auth.AcceptOrContinue(nil, []byte{0})
+	if newCtx != nil {
+		t.Error("AcceptOrContinue() returned a new context handle for a simulated call to AcceptSecurityContext that returns NULL")
+	}
+}
+
+func TestAcceptOrContinue_WithNewContext(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	auth.Config.authAPI.(*stubAPI).acceptNewCtx = &CtxtHandle{42, 314}
+	gotNewCtx, _, _, _, _ := auth.AcceptOrContinue(nil, []byte{0})
+	if gotNewCtx == nil {
+		t.Fatal("AcceptOrContinue() returned nil for new context handle for a simulated call to AcceptSecurityContext that returns a valid handle")
+	}
+	wantNewCtx := &CtxtHandle{42, 314}
+	if *gotNewCtx != *wantNewCtx {
+		t.Errorf("AcceptOrContinue() got new context handle = %v, want %v (returned by AcceptSecurityContext)", *gotNewCtx, *wantNewCtx)
 	}
 }
 
