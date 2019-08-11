@@ -204,6 +204,38 @@ func (a *Authenticator) AcceptOrContinue(context *CtxtHandle, input []byte) (new
 	return
 }
 
+// GetCtxHandle retrieves the context handle for this client from request's cookies
+func (a *Authenticator) GetCtxHandle(r *http.Request) (*CtxtHandle, error) {
+	sessionHandle, err := a.Config.contextStore.GetHandle(r)
+	if err != nil {
+		return nil, fmt.Errorf("could not get context handle from session: %s", err)
+	}
+	var contextHandle *CtxtHandle
+	if contextHandle, ok := sessionHandle.(*CtxtHandle); ok {
+		log.Printf("CtxHandle: 0x%x\n", *contextHandle)
+	} else {
+		log.Printf("CtxHandle: nil\n")
+	}
+	return contextHandle, nil
+}
+
+// SetCtxHandle retrieves the context handle for this client from request's cookies
+func (a *Authenticator) SetCtxHandle(r *http.Request, w http.ResponseWriter, newContext *CtxtHandle) error {
+	if newContext != nil {
+		err := a.Config.contextStore.SetHandle(r, w, newContext)
+		if err != nil {
+			return fmt.Errorf("could not save context to cookie: %s", err)
+		}
+		a.ctxListMux.Lock()
+		a.ctxList = append(a.ctxList, *newContext)
+		a.ctxListMux.Unlock()
+		log.Printf("New context: 0x%x\n", *newContext)
+	} else {
+		log.Printf("New context: nil\n")
+	}
+	return nil
+}
+
 // Authenticate tries to authenticate the HTTP request and returns nil
 // if authentication was successful.
 // Returns error and data for continuation if authentication was not successful.
@@ -244,23 +276,15 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (st
 	}
 
 	// 4. Authenticate user with provided token
-	sessionHandle, err := a.Config.contextStore.GetHandle(r)
+	contextHandle, err := a.GetCtxHandle(r)
 	if err != nil {
-		return "", fmt.Errorf("could not get context handle from store: %s", err)
-	}
-	var contextHandle *CtxtHandle
-	if contextHandle, ok := sessionHandle.(*CtxtHandle); ok {
-		log.Printf("CtxHandle: 0x%x\n", *contextHandle)
-	} else {
-		log.Printf("CtxHandle: nil\n")
+		return "", err
 	}
 	newCtx, output, _, status, err := a.AcceptOrContinue(contextHandle, input)
 	log.Printf("Accept status: 0x%x\n", status)
-	if newCtx != nil {
-		a.Config.contextStore.SetHandle(r, w, newCtx)
-		log.Printf("New context: 0x%x\n", *newCtx)
-	} else {
-		log.Printf("New context: nil\n")
+	setErr := a.SetCtxHandle(r, w, newCtx)
+	if setErr != nil {
+		return "", setErr
 	}
 	if err != nil {
 		return "", fmt.Errorf("AcceptSecurityContext failed with status 0x%x; error: %s", status, err)
