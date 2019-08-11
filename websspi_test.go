@@ -463,6 +463,7 @@ func TestAuthenticate_ErrorGetCtxHandle(t *testing.T) {
 
 func TestAuthenticate_ErrorSetCtxHandle(t *testing.T) {
 	auth := newTestAuthenticator(t)
+	auth.Config.authAPI.(*stubAPI).acceptNewCtx = &CtxtHandle{42, 314}
 	auth.Config.contextStore.(*stubContextStore).setError = errors.New("internal error")
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
