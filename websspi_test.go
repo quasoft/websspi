@@ -234,6 +234,23 @@ func TestAcceptOrContinue_SetCtxHandle(t *testing.T) {
 	}
 }
 
+func TestAcceptOrContinue_ClearCtxHandle(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	r := httptest.NewRequest("GET", "http://localhost:9000/", nil)
+	w := httptest.NewRecorder()
+
+	err := auth.SetCtxHandle(r, w, nil)
+	if err != nil {
+		t.Fatalf("SetCtxHandle() failed with error %s, wanted no error", err)
+	}
+	value := auth.Config.contextStore.(*stubContextStore).contextHandle
+	gotCtx, ok := value.(*CtxtHandle)
+	wantCtx := &CtxtHandle{0, 0}
+	if !ok || *gotCtx != *wantCtx {
+		t.Errorf("SetCtxHandle() did not clear context value in store, got = %v, want = %v", gotCtx, wantCtx)
+	}
+}
+
 func TestAcceptOrContinue_GetCtxHandle(t *testing.T) {
 	auth := newTestAuthenticator(t)
 	r := httptest.NewRequest("GET", "http://localhost:9000/", nil)
@@ -249,6 +266,21 @@ func TestAcceptOrContinue_GetCtxHandle(t *testing.T) {
 	}
 	if *gotCtx != *wantCtx {
 		t.Errorf("GetCtxHandle() returned wrong context handle, got = %v, want = %v", gotCtx, wantCtx)
+	}
+}
+
+func TestAcceptOrContinue_GetEmptyCtxHandle(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	r := httptest.NewRequest("GET", "http://localhost:9000/", nil)
+
+	wantCtx := &CtxtHandle{0, 0}
+	auth.Config.contextStore.(*stubContextStore).contextHandle = wantCtx
+	gotCtx, err := auth.GetCtxHandle(r)
+	if err != nil {
+		t.Fatalf("GetCtxHandle() failed with error %s, wanted no error", err)
+	}
+	if gotCtx != nil {
+		t.Errorf("GetCtxHandle() returned %v for empty context handle, wanted nil", *gotCtx)
 	}
 }
 

@@ -220,6 +220,9 @@ func (a *Authenticator) GetCtxHandle(r *http.Request) (*CtxtHandle, error) {
 	}
 	if contextHandle, ok := sessionHandle.(*CtxtHandle); ok {
 		log.Printf("CtxHandle: 0x%x\n", *contextHandle)
+		if contextHandle.Lower == 0 && contextHandle.Upper == 0 {
+			return nil, nil
+		}
 		return contextHandle, nil
 	}
 	log.Printf("CtxHandle: nil\n")
@@ -228,18 +231,20 @@ func (a *Authenticator) GetCtxHandle(r *http.Request) (*CtxtHandle, error) {
 
 // SetCtxHandle retrieves the context handle for this client from request's cookies
 func (a *Authenticator) SetCtxHandle(r *http.Request, w http.ResponseWriter, newContext *CtxtHandle) error {
+	// Store can't store nil value, so if newContext is nil, store an empty CtxHandle
+	ctx := &CtxtHandle{}
 	if newContext != nil {
-		err := a.Config.contextStore.SetHandle(r, w, newContext)
-		if err != nil {
-			return fmt.Errorf("could not save context to cookie: %s", err)
-		}
-		a.ctxListMux.Lock()
-		a.ctxList = append(a.ctxList, *newContext)
-		a.ctxListMux.Unlock()
-		log.Printf("New context: 0x%x\n", *newContext)
-	} else {
-		log.Printf("New context: nil\n")
+		ctx = newContext
 	}
+	// TODO: Delete previous context
+	err := a.Config.contextStore.SetHandle(r, w, ctx)
+	if err != nil {
+		return fmt.Errorf("could not save context to cookie: %s", err)
+	}
+	a.ctxListMux.Lock()
+	a.ctxList = append(a.ctxList, *ctx)
+	a.ctxListMux.Unlock()
+	log.Printf("New context: 0x%x\n", *ctx)
 	return nil
 }
 
@@ -289,9 +294,11 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (st
 	}
 	newCtx, output, _, status, err := a.AcceptOrContinue(contextHandle, input)
 	log.Printf("Accept status: 0x%x\n", status)
-	setErr := a.SetCtxHandle(r, w, newCtx)
-	if setErr != nil {
-		return "", setErr
+	if newCtx != nil {
+		setErr := a.SetCtxHandle(r, w, newCtx)
+		if setErr != nil {
+			return "", setErr
+		}
 	}
 	if err != nil {
 		return "", fmt.Errorf("AcceptSecurityContext failed with status 0x%x; error: %s", status, err)
@@ -302,6 +309,9 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (st
 	}
 
 	// 5. Get username
+	if newCtx == nil {
+		newCtx = contextHandle
+	}
 	// 6. Store username in context
 	return "", nil
 }
