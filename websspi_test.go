@@ -270,6 +270,36 @@ func TestAcceptOrContinue_WithNewContext(t *testing.T) {
 	}
 }
 
+func TestAcceptOrContinue_OnErrorStatus(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	tests := []struct {
+		name   string
+		errorStatus SECURITY_STATUS
+	}{
+		{"SEC_E_INCOMPLETE_MESSAGE", SEC_E_INCOMPLETE_MESSAGE},
+		{"SEC_E_INSUFFICIENT_MEMORY", SEC_E_INSUFFICIENT_MEMORY},
+		{"SEC_E_INTERNAL_ERROR", SEC_E_INTERNAL_ERROR},
+		{"SEC_E_INVALID_HANDLE", SEC_E_INVALID_HANDLE},
+		{"SEC_E_INVALID_TOKEN", SEC_E_INVALID_TOKEN},
+		{"SEC_E_LOGON_DENIED", SEC_E_LOGON_DENIED},
+		{"SEC_E_NOT_OWNER", SEC_E_NOT_OWNER},
+		{"SEC_E_NO_AUTHENTICATING_AUTHORITY", SEC_E_NO_AUTHENTICATING_AUTHORITY},
+		{"SEC_E_NO_CREDENTIALS", SEC_E_NO_CREDENTIALS},
+		{"SEC_E_SECPKG_NOT_FOUND", SEC_E_SECPKG_NOT_FOUND},
+		{"SEC_E_UNKNOWN_CREDENTIALS", SEC_E_UNKNOWN_CREDENTIALS},
+		{"SEC_E_UNSUPPORTED_FUNCTION", SEC_E_UNSUPPORTED_FUNCTION},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			auth.Config.authAPI.(*stubAPI).acceptStatus = tt.errorStatus
+			_, _, _, _, err := auth.AcceptOrContinue(nil, []byte{0})
+			if err == nil {
+				t.Errorf("AcceptOrContinue() returns no error when AcceptSecurityContext fails with %s", tt.name)
+			}
+		})
+	}
+}
+
 func TestAuthenticate_NoAuthHeader(t *testing.T) {
 	auth := newTestAuthenticator(t)
 
