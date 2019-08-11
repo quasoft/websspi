@@ -2,6 +2,7 @@ package websspi
 
 import (
 	"bytes"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"syscall"
@@ -78,16 +79,18 @@ func (s *stubAPI) FreeCredentialsHandle(handle *CredHandle) SECURITY_STATUS {
 }
 
 type stubContextStore struct {
-	contextHandle interface{}
+	contextHandle interface{} // local storage for the last value set by SetHandle
+	getError      error       // Error value that should be returned on calls to GetHandle
+	setError      error       // Error value that should be returned on calls to SetHandle
 }
 
 func (s *stubContextStore) GetHandle(r *http.Request) (interface{}, error) {
-	return s.contextHandle, nil
+	return s.contextHandle, s.getError
 }
 
 func (s *stubContextStore) SetHandle(r *http.Request, w http.ResponseWriter, contextHandle interface{}) error {
 	s.contextHandle = contextHandle
-	return nil
+	return s.setError
 }
 
 // newTestAuthenticator creates an Authenticator for use in tests.
@@ -213,6 +216,41 @@ func TestFree_ErrorOnDeleteContexts(t *testing.T) {
 	}
 }
 
+func TestAcceptOrContinue_SetCtxHandle(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	r := httptest.NewRequest("GET", "http://localhost:9000/", nil)
+	w := httptest.NewRecorder()
+
+	wantCtx := &CtxtHandle{42, 314}
+	err := auth.SetCtxHandle(r, w, wantCtx)
+	if err != nil {
+		t.Fatalf("SetCtxHandle() failed with error %s, wanted no error", err)
+	}
+	value := auth.Config.contextStore.(*stubContextStore).contextHandle
+	gotCtx, ok := value.(*CtxtHandle)
+	if !ok || *gotCtx != *wantCtx {
+		t.Errorf("SetCtxHandle() did not save the context value to the store, got = %v, want = %v", gotCtx, wantCtx)
+	}
+}
+
+func TestAcceptOrContinue_GetCtxHandle(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	r := httptest.NewRequest("GET", "http://localhost:9000/", nil)
+
+	wantCtx := &CtxtHandle{42, 314}
+	auth.Config.contextStore.(*stubContextStore).contextHandle = wantCtx
+	gotCtx, err := auth.GetCtxHandle(r)
+	if err != nil {
+		t.Fatalf("GetCtxHandle() failed with error %s, wanted no error", err)
+	}
+	if gotCtx == nil {
+		t.Fatalf("GetCtxHandle() returned nil context, wanted %v", *wantCtx)
+	}
+	if *gotCtx != *wantCtx {
+		t.Errorf("GetCtxHandle() returned wrong context handle, got = %v, want = %v", gotCtx, wantCtx)
+	}
+}
+
 func TestAcceptOrContinue_WithEmptyInput(t *testing.T) {
 	auth := newTestAuthenticator(t)
 	_, _, _, _, err := auth.AcceptOrContinue(nil, nil)
@@ -273,7 +311,7 @@ func TestAcceptOrContinue_WithNewContext(t *testing.T) {
 func TestAcceptOrContinue_OnErrorStatus(t *testing.T) {
 	auth := newTestAuthenticator(t)
 	tests := []struct {
-		name   string
+		name        string
 		errorStatus SECURITY_STATUS
 	}{
 		{"SEC_E_INCOMPLETE_MESSAGE", SEC_E_INCOMPLETE_MESSAGE},
@@ -387,6 +425,61 @@ func TestAuthenticate_BadBase64(t *testing.T) {
 	}
 }
 
+func TestAuthenticate_ErrorGetCtxHandle(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	auth.Config.contextStore.(*stubContextStore).getError = errors.New("internal error")
+	r := httptest.NewRequest("GET", "http://example.local/", nil)
+	r.Header.Set("Authorization", "Negotiate a874-210004-92aa8742-09af8-bc028")
+	_, err := auth.Authenticate(r, nil)
+	if err == nil {
+		t.Error("Authenticate() returns nil (no error) when GetCtxHandle fails, wanted an error")
+	}
+}
+
+func TestAuthenticate_ErrorSetCtxHandle(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	auth.Config.contextStore.(*stubContextStore).setError = errors.New("internal error")
+	r := httptest.NewRequest("GET", "http://example.local/", nil)
+	r.Header.Set("Authorization", "Negotiate a874-210004-92aa8742-09af8-bc028")
+	_, err := auth.Authenticate(r, nil)
+	if err == nil {
+		t.Error("Authenticate() returns nil (no error) when SetCtxHandle fails, wanted an error")
+	}
+}
+
+func TestAuthenticate_OnErrorStatus(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	r := httptest.NewRequest("GET", "http://example.local/", nil)
+	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
+
+	tests := []struct {
+		name        string
+		errorStatus SECURITY_STATUS
+	}{
+		{"SEC_E_INCOMPLETE_MESSAGE", SEC_E_INCOMPLETE_MESSAGE},
+		{"SEC_E_INSUFFICIENT_MEMORY", SEC_E_INSUFFICIENT_MEMORY},
+		{"SEC_E_INTERNAL_ERROR", SEC_E_INTERNAL_ERROR},
+		{"SEC_E_INVALID_HANDLE", SEC_E_INVALID_HANDLE},
+		{"SEC_E_INVALID_TOKEN", SEC_E_INVALID_TOKEN},
+		{"SEC_E_LOGON_DENIED", SEC_E_LOGON_DENIED},
+		{"SEC_E_NOT_OWNER", SEC_E_NOT_OWNER},
+		{"SEC_E_NO_AUTHENTICATING_AUTHORITY", SEC_E_NO_AUTHENTICATING_AUTHORITY},
+		{"SEC_E_NO_CREDENTIALS", SEC_E_NO_CREDENTIALS},
+		{"SEC_E_SECPKG_NOT_FOUND", SEC_E_SECPKG_NOT_FOUND},
+		{"SEC_E_UNKNOWN_CREDENTIALS", SEC_E_UNKNOWN_CREDENTIALS},
+		{"SEC_E_UNSUPPORTED_FUNCTION", SEC_E_UNSUPPORTED_FUNCTION},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			auth.Config.authAPI.(*stubAPI).acceptStatus = tt.errorStatus
+			_, err := auth.Authenticate(r, nil)
+			if err == nil {
+				t.Errorf("Authenticate() returns no error when AcceptSecurityContext fails with %s", tt.name)
+			}
+		})
+	}
+}
+
 func TestAuthenticate_ValidBase64(t *testing.T) {
 	auth := newTestAuthenticator(t)
 
@@ -446,5 +539,58 @@ func TestWithAuth_ValidToken(t *testing.T) {
 		t.Error("Handler was called, when status code was not OK. Handler should not be called for error status codes.")
 	} else if code == http.StatusOK && !handlerCalled {
 		t.Error("Handler was not called, even though token was valid")
+	}
+}
+
+func TestWithAuth_OnErrorStatus(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	r := httptest.NewRequest("GET", "http://example.local/", nil)
+	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
+
+	tests := []struct {
+		name        string
+		errorStatus SECURITY_STATUS
+	}{
+		{"SEC_E_INCOMPLETE_MESSAGE", SEC_E_INCOMPLETE_MESSAGE},
+		{"SEC_E_INSUFFICIENT_MEMORY", SEC_E_INSUFFICIENT_MEMORY},
+		{"SEC_E_INTERNAL_ERROR", SEC_E_INTERNAL_ERROR},
+		{"SEC_E_INVALID_HANDLE", SEC_E_INVALID_HANDLE},
+		{"SEC_E_INVALID_TOKEN", SEC_E_INVALID_TOKEN},
+		{"SEC_E_LOGON_DENIED", SEC_E_LOGON_DENIED},
+		{"SEC_E_NOT_OWNER", SEC_E_NOT_OWNER},
+		{"SEC_E_NO_AUTHENTICATING_AUTHORITY", SEC_E_NO_AUTHENTICATING_AUTHORITY},
+		{"SEC_E_NO_CREDENTIALS", SEC_E_NO_CREDENTIALS},
+		{"SEC_E_SECPKG_NOT_FOUND", SEC_E_SECPKG_NOT_FOUND},
+		{"SEC_E_UNKNOWN_CREDENTIALS", SEC_E_UNKNOWN_CREDENTIALS},
+		{"SEC_E_UNSUPPORTED_FUNCTION", SEC_E_UNSUPPORTED_FUNCTION},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			auth.Config.authAPI.(*stubAPI).acceptStatus = tt.errorStatus
+			w := httptest.NewRecorder()
+
+			handlerCalled := false
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				handlerCalled = true
+			})
+			protectedHandler := auth.WithAuth(handler)
+			protectedHandler.ServeHTTP(w, r)
+
+			_ = auth.Free()
+
+			code := w.Result().StatusCode
+			if code != http.StatusUnauthorized {
+				t.Errorf(
+					"Got HTTP status %v for unauthorized request (when AcceptSecurityContext = 0x%x), wanted http.StatusUnauthorized (%v)",
+					code,
+					tt.errorStatus,
+					http.StatusUnauthorized,
+				)
+			}
+
+			if code == http.StatusUnauthorized && handlerCalled {
+				t.Error("Handler was called, when status code was StatusUnauthorized. Handler should not be called for error status codes.")
+			}
+		})
 	}
 }
