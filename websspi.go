@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -48,6 +49,8 @@ type Authenticator struct {
 	Config     Config
 	serverCred *CredHandle
 	credExpiry *time.Time
+	ctxList    []CtxtHandle
+	ctxListMux *sync.Mutex
 }
 
 // New creates a new Authenticator object with the given configuration options.
@@ -58,7 +61,8 @@ func New(config *Config) (*Authenticator, error) {
 	}
 
 	var auth = &Authenticator{
-		Config: *config,
+		Config:     *config,
+		ctxListMux: &sync.Mutex{},
 	}
 
 	err = auth.PrepareCredentials(config.KrbPrincipal)
@@ -114,8 +118,19 @@ func (a *Authenticator) PrepareCredentials(principal string) error {
 // Free method should be called before shutting down the server to let
 // it release allocated Win32 resources
 func (a *Authenticator) Free() error {
+	var status SECURITY_STATUS
+	a.ctxListMux.Lock()
+	for _, ctx := range a.ctxList {
+		// TODO: Also check for stale security contexts and delete them periodically
+		status = a.Config.authAPI.DeleteSecurityContext(&ctx)
+		if status != SEC_E_OK {
+			return fmt.Errorf("call to DeleteSecurityContext failed with code 0x%x", status)
+		}
+	}
+	a.ctxList = nil
+	a.ctxListMux.Unlock()
 	if a.serverCred != nil {
-		status := a.Config.authAPI.FreeCredentialsHandle(a.serverCred)
+		status = a.Config.authAPI.FreeCredentialsHandle(a.serverCred)
 		if status != SEC_E_OK {
 			return fmt.Errorf("call to FreeCredentialsHandle failed with code 0x%x", status)
 		}
