@@ -208,7 +208,7 @@ func (a *Authenticator) AcceptOrContinue(context *CtxtHandle, input []byte) (new
 		err = fmt.Errorf("call to AcceptSecurityContext failed with code 0x%x", status)
 		return
 	}
-	// TODO: Return contextAttr?
+	// TODO: Check contextAttr?
 	return
 }
 
