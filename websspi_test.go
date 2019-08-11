@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"syscall"
 	"testing"
 )
@@ -335,6 +336,30 @@ func TestAcceptOrContinue_OnErrorStatus(t *testing.T) {
 				t.Errorf("AcceptOrContinue() returns no error when AcceptSecurityContext fails with %s", tt.name)
 			}
 		})
+	}
+}
+
+func TestReturn401_Headers(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	w := httptest.NewRecorder()
+
+	auth.Return401(w, "")
+
+	got := w.Header().Get("WWW-Authenticate")
+	if !strings.HasPrefix(got, "Negotiate") {
+		t.Errorf("Return401() returned a WWW-Authenticate header that does not start with Negotiate, got = %q", got)
+	}
+}
+
+func TestReturn401_WithOutputData(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	w := httptest.NewRecorder()
+
+	auth.Return401(w, "output-token")
+
+	got := w.Header().Get("WWW-Authenticate")
+	if !strings.Contains(got, "output-token") {
+		t.Errorf("The header returned by Return401() does not contain the output token, got = %q", got)
 	}
 }
 
