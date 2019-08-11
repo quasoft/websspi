@@ -218,13 +218,12 @@ func (a *Authenticator) GetCtxHandle(r *http.Request) (*CtxtHandle, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not get context handle from session: %s", err)
 	}
-	var contextHandle *CtxtHandle
 	if contextHandle, ok := sessionHandle.(*CtxtHandle); ok {
 		log.Printf("CtxHandle: 0x%x\n", *contextHandle)
-	} else {
-		log.Printf("CtxHandle: nil\n")
+		return contextHandle, nil
 	}
-	return contextHandle, nil
+	log.Printf("CtxHandle: nil\n")
+	return nil, nil
 }
 
 // SetCtxHandle retrieves the context handle for this client from request's cookies
