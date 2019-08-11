@@ -187,7 +187,7 @@ func (a *Authenticator) AcceptOrContinue(context *CtxtHandle, input []byte) (new
 	}
 	tm := time.Unix(0, expiry.Nanoseconds())
 	exp = &tm
-	if status == SEC_E_OK || status == SEC_I_CONTINUE_NEEDED || status == SEC_I_COMPLETE_AND_CONTINUE {
+	if status == SEC_E_OK || status == SEC_I_CONTINUE_NEEDED {
 		// Copy outputBuf.Buffer to out and free the outputBuf.Buffer
 		out = make([]byte, outputBuf.BufferSize)
 		var bufPtr = uintptr(unsafe.Pointer(outputBuf.Buffer))
@@ -204,14 +204,7 @@ func (a *Authenticator) AcceptOrContinue(context *CtxtHandle, input []byte) (new
 			return
 		}
 	}
-	if status == SEC_I_COMPLETE_NEEDED || status == SEC_I_COMPLETE_AND_CONTINUE {
-		// TODO: Call CompleteToken?
-		if err != nil {
-			return
-		}
-	}
-	if status != SEC_E_OK && status != SEC_I_CONTINUE_NEEDED &&
-		status != SEC_I_COMPLETE_NEEDED && status != SEC_I_COMPLETE_AND_CONTINUE {
+	if status != SEC_E_OK && status != SEC_I_CONTINUE_NEEDED {
 		err = fmt.Errorf("call to AcceptSecurityContext failed with code 0x%x", status)
 		return
 	}
