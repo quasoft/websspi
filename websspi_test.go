@@ -1,6 +1,7 @@
 package websspi
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"syscall"
@@ -11,7 +12,9 @@ type stubAPI struct {
 	acquireStatus    SECURITY_STATUS // the status code that should be returned in simulated calls to AcquireCredentialsHandle
 	acceptStatus     SECURITY_STATUS // the status code that should be returned in simulated calls to AcceptSecurityContext
 	acceptNewCtx     *CtxtHandle     // the context handle to be returned in simulated calls to AcceptSecurityContext
+	acceptOutBuf     *SecBuffer      // the output buffer to be returned in simulated calls to AcceptSecurityContext
 	deleteStatus     SECURITY_STATUS // the status code that should be returned in simulated calls to DeleteSecurityContext
+	deleteCalled     bool            // true if DeleteSecurityContext has been called
 	queryStatus      SECURITY_STATUS // the status code that should be returned in simulated calls to QueryContextAttributes
 	freeBufferStatus SECURITY_STATUS // the status code that should be returned in simulated calls to FreeContextBuffer
 	freeCredsStatus  SECURITY_STATUS // the status code that should be returned in simulated calls to FreeCredentialsHandle
@@ -51,6 +54,9 @@ func (s *stubAPI) AcceptSecurityContext(
 	if s.acceptNewCtx != nil {
 		*newContext = *s.acceptNewCtx
 	}
+	if s.acceptOutBuf != nil {
+		*output.Buffers = *s.acceptOutBuf
+	}
 	return s.acceptStatus
 }
 
@@ -59,6 +65,7 @@ func (s *stubAPI) QueryContextAttributes(context *CtxtHandle, attribute uint32, 
 }
 
 func (s *stubAPI) DeleteSecurityContext(context *CtxtHandle) SECURITY_STATUS {
+	s.deleteCalled = true
 	return s.deleteStatus
 }
 
@@ -88,14 +95,15 @@ func newTestAuthenticator(t *testing.T) *Authenticator {
 	config := Config{
 		contextStore: &stubContextStore{},
 		authAPI: &stubAPI{
-			SEC_E_OK,
-			SEC_E_OK,
-			nil,
-			SEC_E_OK,
-			SEC_E_OK,
-			SEC_E_OK,
-			SEC_E_OK,
-			"a87421000492aa874209af8bc028",
+			acquireStatus:    SEC_E_OK,
+			acceptStatus:     SEC_E_OK,
+			acceptNewCtx:     nil,
+			acceptOutBuf:     nil,
+			deleteStatus:     SEC_E_OK,
+			queryStatus:      SEC_E_OK,
+			freeBufferStatus: SEC_E_OK,
+			freeCredsStatus:  SEC_E_OK,
+			validToken:       "a87421000492aa874209af8bc028",
 		},
 		KrbPrincipal: "service@test.local",
 	}
@@ -168,10 +176,76 @@ func TestFree_ErrorOnFreeCredentials(t *testing.T) {
 	}
 }
 
+func TestFree_DeleteContexts(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	r := httptest.NewRequest("GET", "http://localhost:9000/", nil)
+	w := httptest.NewRecorder()
+	ctx := CtxtHandle{42, 314}
+	err := auth.SetCtxHandle(r, w, &ctx)
+	if err != nil {
+		t.Fatalf("SetCtxHandle() failed with error %s, wanted no error", err)
+	}
+	err = auth.Free()
+	if err != nil {
+		t.Fatalf("Free() failed with error %s, wanted no error", err)
+	}
+	if !auth.Config.authAPI.(*stubAPI).deleteCalled {
+		t.Errorf("Free() did NOT call DeleteSecurityContext, wanted at least one call")
+	}
+	if len(auth.ctxList) > 0 {
+		t.Errorf("Free() did not delete all contexts. Have %d contexts, wanted 0", len(auth.ctxList))
+	}
+}
+
+func TestFree_ErrorOnDeleteContexts(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	auth.Config.authAPI.(*stubAPI).deleteStatus = SEC_E_INTERNAL_ERROR
+	r := httptest.NewRequest("GET", "http://localhost:9000/", nil)
+	w := httptest.NewRecorder()
+	ctx := CtxtHandle{42, 314}
+	err := auth.SetCtxHandle(r, w, &ctx)
+	if err != nil {
+		t.Fatalf("SetCtxHandle() failed with error %s, wanted no error", err)
+	}
+	err = auth.Free()
+	if err == nil {
+		t.Errorf("Free() returns no error when DeleteSecurityContext fails, wanted an error")
+	}
+}
+
 func TestAcceptOrContinue_WithEmptyInput(t *testing.T) {
 	auth := newTestAuthenticator(t)
-	auth.AcceptOrContinue(nil, nil)
+	_, _, _, _, err := auth.AcceptOrContinue(nil, nil)
 	// AcceptOrContinue should not panic on nil arguments
+	if err == nil {
+		t.Error("AcceptOrContinue(nil, nil) returned no error, should have returned an error")
+	}
+}
+
+func TestAcceptOrContinue_WithOutputBuffer(t *testing.T) {
+	wantData := [5]byte{2, 4, 8, 16, 32}
+	buf := SecBuffer{uint32(len(wantData)), SECBUFFER_TOKEN, &wantData[0]}
+	auth := newTestAuthenticator(t)
+	auth.Config.authAPI.(*stubAPI).acceptOutBuf = &buf
+	_, gotOut, _, _, _ := auth.AcceptOrContinue(nil, []byte{0})
+	if gotOut == nil {
+		t.Fatalf("AcceptOrContinue() returned no output data, wanted %v", wantData)
+	}
+	if !bytes.Equal(gotOut, wantData[:]) {
+		t.Errorf("AcceptOrContinue() got %v for output data, wanted %v", gotOut, wantData)
+	}
+}
+
+func TestAcceptOrContinue_ErrorOnFreeBuffer(t *testing.T) {
+	data := [1]byte{0}
+	buf := SecBuffer{uint32(len(data)), SECBUFFER_TOKEN, &data[0]}
+	auth := newTestAuthenticator(t)
+	auth.Config.authAPI.(*stubAPI).acceptOutBuf = &buf
+	auth.Config.authAPI.(*stubAPI).freeBufferStatus = SEC_E_INVALID_HANDLE
+	_, _, _, _, err := auth.AcceptOrContinue(nil, []byte{0})
+	if err == nil {
+		t.Error("AcceptOrContinue() returns no error when FreeContextBuffer fails, should have returned an error")
+	}
 }
 
 func TestAcceptOrContinue_WithoutNewContext(t *testing.T) {
