@@ -248,6 +248,26 @@ func (a *Authenticator) SetCtxHandle(r *http.Request, w http.ResponseWriter, new
 	return nil
 }
 
+// GetUsername returns the name of the user associated with the specified security context
+func (a *Authenticator) GetUsername(context *CtxtHandle) (username string, err error) {
+	var names SecPkgContext_Names
+	status := a.Config.authAPI.QueryContextAttributes(context, SECPKG_ATTR_NAMES, (*byte)(unsafe.Pointer(&names)))
+	if status != SEC_E_OK {
+		err = fmt.Errorf("QueryContextAttributes failed with status 0x%x", status)
+		return
+	}
+	if names.userName != nil {
+		username = UTF16PtrToString(names.userName, 2048)
+		status = a.Config.authAPI.FreeContextBuffer((*byte)(unsafe.Pointer(names.userName)))
+		if status != SEC_E_OK {
+			err = fmt.Errorf("FreeContextBuffer failed with status 0x%x", status)
+		}
+		return
+	}
+	err = errors.New("QueryContextAttributes returned empty name")
+	return
+}
+
 // Authenticate tries to authenticate the HTTP request and returns nil
 // if authentication was successful.
 // Returns error and data for continuation if authentication was not successful.
@@ -312,14 +332,19 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (st
 	if newCtx == nil {
 		newCtx = contextHandle
 	}
+	username, err := a.GetUsername(newCtx)
+	if err != nil {
+		return "", fmt.Errorf("could not get username, error: %s", err)
+	}
+	// 6. Store username in http context
+	log.Printf("USERNAME: " + username + "\r\n")
 
-	// 6. Delete security context
+	// 7. Delete security context
 	err = a.SetCtxHandle(r, w, nil)
 	if err != nil {
 		return "", fmt.Errorf("could not clear context, error: %s", err)
 	}
 
-	// 6. Store username in context
 	return "", nil
 }
 

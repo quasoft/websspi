@@ -93,6 +93,10 @@ type LUID struct {
 	HighPart int32
 }
 
+type SecPkgContext_Names struct {
+	userName *uint16
+}
+
 // The API interface describes the functions from secur32 used in this package and
 // its primary purpose is to allow replacing them with stub functions in unit tests.
 type API interface {

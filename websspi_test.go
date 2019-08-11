@@ -8,6 +8,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"unsafe"
 )
 
 type stubAPI struct {
@@ -18,6 +19,7 @@ type stubAPI struct {
 	deleteStatus     SECURITY_STATUS // the status code that should be returned in simulated calls to DeleteSecurityContext
 	deleteCalled     bool            // true if DeleteSecurityContext has been called
 	queryStatus      SECURITY_STATUS // the status code that should be returned in simulated calls to QueryContextAttributes
+	queryOutBuf      *byte           // the buffer to be returned in simulated calls to QueryContextAttributes
 	freeBufferStatus SECURITY_STATUS // the status code that should be returned in simulated calls to FreeContextBuffer
 	freeCredsStatus  SECURITY_STATUS // the status code that should be returned in simulated calls to FreeCredentialsHandle
 	validToken       string          // value that will be asumed to be a valid token
@@ -63,6 +65,13 @@ func (s *stubAPI) AcceptSecurityContext(
 }
 
 func (s *stubAPI) QueryContextAttributes(context *CtxtHandle, attribute uint32, buffer *byte) SECURITY_STATUS {
+	if s.queryOutBuf != nil {
+		if attribute == SECPKG_ATTR_NAMES {
+			inNames := (*SecPkgContext_Names)(unsafe.Pointer(buffer))
+			outNames := (*SecPkgContext_Names)(unsafe.Pointer(s.queryOutBuf))
+			*inNames = *outNames
+		}
+	}
 	return s.queryStatus
 }
 
@@ -96,6 +105,10 @@ func (s *stubContextStore) SetHandle(r *http.Request, w http.ResponseWriter, con
 
 // newTestAuthenticator creates an Authenticator for use in tests.
 func newTestAuthenticator(t *testing.T) *Authenticator {
+	names, err := syscall.UTF16PtrFromString("testuser")
+	if err != nil {
+		panic(err)
+	}
 	config := Config{
 		contextStore: &stubContextStore{},
 		authAPI: &stubAPI{
@@ -105,6 +118,7 @@ func newTestAuthenticator(t *testing.T) *Authenticator {
 			acceptOutBuf:     nil,
 			deleteStatus:     SEC_E_OK,
 			queryStatus:      SEC_E_OK,
+			queryOutBuf:      (*byte)(unsafe.Pointer(&SecPkgContext_Names{userName: names})),
 			freeBufferStatus: SEC_E_OK,
 			freeCredsStatus:  SEC_E_OK,
 			validToken:       "a87421000492aa874209af8bc028",
@@ -368,6 +382,35 @@ func TestAcceptOrContinue_OnErrorStatus(t *testing.T) {
 				t.Errorf("AcceptOrContinue() returns no error when AcceptSecurityContext fails with %s", tt.name)
 			}
 		})
+	}
+}
+
+func TestGetUsername_ErrorOnQueryAttributes(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	auth.Config.authAPI.(*stubAPI).queryStatus = SEC_E_INTERNAL_ERROR
+	_, err := auth.GetUsername(&CtxtHandle{0, 0})
+	if err == nil {
+		t.Errorf("GetUsername() returns no error when QueryContextAttributes fails, wanted an error")
+	}
+}
+
+func TestGetUsername_ErrorOnFreeBuffer(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	auth.Config.authAPI.(*stubAPI).freeBufferStatus = SEC_E_INTERNAL_ERROR
+	_, err := auth.GetUsername(&CtxtHandle{0, 0})
+	if err == nil {
+		t.Errorf("GetUsername() returns no error when FreeContextBuffer fails, wanted an error")
+	}
+}
+
+func TestGetUsername_Valid(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	got, err := auth.GetUsername(&CtxtHandle{0, 0})
+	if err != nil {
+		t.Fatalf("GetUsername() failed with error %q, wanted no error", err)
+	}
+	if got != "testuser" {
+		t.Errorf("GetUsername() got %s, want %s", got, "testuser")
 	}
 }
 
