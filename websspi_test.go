@@ -378,8 +378,8 @@ func TestAuthenticate_MultipleAuthHeaders(t *testing.T) {
 	auth := newTestAuthenticator(t)
 
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
-	r.Header.Add("Authorization", "Negotiate a874-210004-92aa8742-09af8-bc028")
-	r.Header.Add("Authorization", "Negotiate a874-210004-92aa8742-09af8-bc029")
+	r.Header.Add("Authorization", "Negotiate a87421000492aa874209af8bc028")
+	r.Header.Add("Authorization", "Negotiate a87421000492aa874209af8bc028")
 
 	_, err := auth.Authenticate(r, nil)
 	if err == nil {
@@ -454,7 +454,7 @@ func TestAuthenticate_ErrorGetCtxHandle(t *testing.T) {
 	auth := newTestAuthenticator(t)
 	auth.Config.contextStore.(*stubContextStore).getError = errors.New("internal error")
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
-	r.Header.Set("Authorization", "Negotiate a874-210004-92aa8742-09af8-bc028")
+	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
 	_, err := auth.Authenticate(r, nil)
 	if err == nil {
 		t.Error("Authenticate() returns nil (no error) when GetCtxHandle fails, wanted an error")
@@ -465,10 +465,34 @@ func TestAuthenticate_ErrorSetCtxHandle(t *testing.T) {
 	auth := newTestAuthenticator(t)
 	auth.Config.contextStore.(*stubContextStore).setError = errors.New("internal error")
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
-	r.Header.Set("Authorization", "Negotiate a874-210004-92aa8742-09af8-bc028")
+	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
 	_, err := auth.Authenticate(r, nil)
 	if err == nil {
 		t.Error("Authenticate() returns nil (no error) when SetCtxHandle fails, wanted an error")
+	}
+}
+
+func TestAuthenticate_WithContinueAndOutputToken(t *testing.T) {
+	wantData := [5]byte{2, 4, 8, 16, 32}
+	buf := SecBuffer{uint32(len(wantData)), SECBUFFER_TOKEN, &wantData[0]}
+	auth := newTestAuthenticator(t)
+	auth.Config.authAPI.(*stubAPI).acceptStatus = SEC_I_CONTINUE_NEEDED
+	auth.Config.authAPI.(*stubAPI).acceptOutBuf = &buf
+	r := httptest.NewRequest("GET", "http://example.local/", nil)
+	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
+	gotTokenB64, err := auth.Authenticate(r, nil)
+	if err == nil {
+		t.Fatal("Authenticate() returns nil (no error) on SEC_I_CONTINUE_NEEDED")
+	}
+	if !strings.Contains(err.Error(), "continue") {
+		t.Errorf("Authenticate() returned wrong error value on SEC_I_CONTINUE_NEEDED, got = %q, want = %q", err, "Negotiation should continue")
+	}
+	if gotTokenB64 == "" {
+		t.Error("Authenticate() returns no output token on SEC_I_CONTINUE_NEEDED")
+	}
+	wantTokenB64 := "AgQIECA="
+	if gotTokenB64 != wantTokenB64 {
+		t.Errorf("Authenticate() got output token = %q, want %q", gotTokenB64, wantTokenB64)
 	}
 }
 
