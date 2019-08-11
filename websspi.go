@@ -312,6 +312,13 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (st
 	if newCtx == nil {
 		newCtx = contextHandle
 	}
+
+	// 6. Delete security context
+	err = a.SetCtxHandle(r, w, nil)
+	if err != nil {
+		return "", fmt.Errorf("could not clear context, error: %s", err)
+	}
+
 	// 6. Store username in context
 	return "", nil
 }
