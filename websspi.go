@@ -300,6 +300,9 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (st
 		// Negotiation should continue by sending the output data back to the client
 		return base64.StdEncoding.EncodeToString(output), errors.New("Negotiation should continue")
 	}
+	if status != SEC_E_OK {
+		return "", fmt.Errorf("access denied, status: 0x%x", status)
+	}
 
 	// 5. Get username
 	// 6. Store username in context
