@@ -443,7 +443,7 @@ func TestAuthenticate_NoAuthHeader(t *testing.T) {
 
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 
-	_, err := auth.Authenticate(r, nil)
+	_, _, err := auth.Authenticate(r, nil)
 	if err == nil {
 		t.Error("Authenticate() returned nil (no error) for request without Authorization header, wanted an error")
 	}
@@ -456,7 +456,7 @@ func TestAuthenticate_MultipleAuthHeaders(t *testing.T) {
 	r.Header.Add("Authorization", "Negotiate a87421000492aa874209af8bc028")
 	r.Header.Add("Authorization", "Negotiate a87421000492aa874209af8bc028")
 
-	_, err := auth.Authenticate(r, nil)
+	_, _, err := auth.Authenticate(r, nil)
 	if err == nil {
 		t.Error("Authenticate() returned nil (no error) for request with multiple Authorization headers, wanted an error")
 	}
@@ -468,7 +468,7 @@ func TestAuthenticate_EmptyAuthHeader(t *testing.T) {
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "")
 
-	_, err := auth.Authenticate(r, nil)
+	_, _, err := auth.Authenticate(r, nil)
 	if err == nil {
 		t.Error("Authenticate() returned nil (no error) for request with empty Authorization header, wanted an error")
 	}
@@ -480,7 +480,7 @@ func TestAuthenticate_BadAuthPrefix(t *testing.T) {
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "auth: neg")
 
-	_, err := auth.Authenticate(r, nil)
+	_, _, err := auth.Authenticate(r, nil)
 	if err == nil {
 		t.Error("Authenticate() returned nil (no error) for request with bad Authorization header, wanted an error")
 	}
@@ -502,7 +502,7 @@ func TestAuthenticate_EmptyToken(t *testing.T) {
 			r := httptest.NewRequest("GET", "http://example.local/", nil)
 			r.Header.Set("Authorization", tt.value)
 
-			_, err := auth.Authenticate(r, nil)
+			_, _, err := auth.Authenticate(r, nil)
 			if err == nil {
 				t.Errorf(
 					"Authenticate() returned nil (no error) for request with bad Authorization header (%v), wanted an error",
@@ -519,7 +519,7 @@ func TestAuthenticate_BadBase64(t *testing.T) {
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "Negotiate a874-210004-92aa8742-09af8-bc028")
 
-	_, err := auth.Authenticate(r, nil)
+	_, _, err := auth.Authenticate(r, nil)
 	if err == nil {
 		t.Error("Authenticate() returned nil (no error) for request with token that is not valid base64 string, wanted an error")
 	}
@@ -530,7 +530,7 @@ func TestAuthenticate_ErrorGetCtxHandle(t *testing.T) {
 	auth.Config.contextStore.(*stubContextStore).getError = errors.New("internal error")
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
-	_, err := auth.Authenticate(r, nil)
+	_, _, err := auth.Authenticate(r, nil)
 	if err == nil {
 		t.Error("Authenticate() returns nil (no error) when GetCtxHandle fails, wanted an error")
 	}
@@ -542,7 +542,7 @@ func TestAuthenticate_ErrorSetCtxHandle(t *testing.T) {
 	auth.Config.contextStore.(*stubContextStore).setError = errors.New("internal error")
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
-	_, err := auth.Authenticate(r, nil)
+	_, _, err := auth.Authenticate(r, nil)
 	if err == nil {
 		t.Error("Authenticate() returns nil (no error) when SetCtxHandle fails, wanted an error")
 	}
@@ -556,7 +556,7 @@ func TestAuthenticate_WithContinueAndOutputToken(t *testing.T) {
 	auth.Config.authAPI.(*stubAPI).acceptOutBuf = &buf
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
-	gotTokenB64, err := auth.Authenticate(r, nil)
+	_, gotTokenB64, err := auth.Authenticate(r, nil)
 	if err == nil {
 		t.Fatal("Authenticate() returns nil (no error) on SEC_I_CONTINUE_NEEDED")
 	}
@@ -597,7 +597,7 @@ func TestAuthenticate_OnErrorStatus(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			auth.Config.authAPI.(*stubAPI).acceptStatus = tt.errorStatus
-			_, err := auth.Authenticate(r, nil)
+			_, _, err := auth.Authenticate(r, nil)
 			if err == nil {
 				t.Errorf("Authenticate() returns no error when AcceptSecurityContext fails with %s", tt.name)
 			}
@@ -611,7 +611,7 @@ func TestAuthenticate_ValidBase64(t *testing.T) {
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
 
-	_, err := auth.Authenticate(r, nil)
+	_, _, err := auth.Authenticate(r, nil)
 	if err != nil {
 		t.Errorf(
 			"Authenticate() returned error %q for request with valid base64 string, wanted nil (no error)",
@@ -626,7 +626,7 @@ func TestAuthenticate_ValidToken(t *testing.T) {
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
 
-	_, err := auth.Authenticate(r, nil)
+	_, _, err := auth.Authenticate(r, nil)
 	if err != nil {
 		t.Errorf(
 			"Authenticate() with valid token returned error %q, wanted nil (no error)",
@@ -646,7 +646,7 @@ func TestAuthenticate_ReturnOutputOnSecEOK(t *testing.T) {
 	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
 
 	want := "AA=="
-	output, _ := auth.Authenticate(r, nil)
+	_, output, _ := auth.Authenticate(r, nil)
 	if output == "" {
 		t.Errorf("Authenticate() returns empty output token when AcceptSecurityContext returns SEC_E_OK with output buffer, wanted %q", want)
 	}
@@ -660,8 +660,14 @@ func TestWithAuth_ValidToken(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	handlerCalled := false
+	gotUsername := ""
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handlerCalled = true
+		info := r.Context().Value("UserInfo")
+		userInfo, ok := info.(*UserInfo)
+		if ok && userInfo != nil {
+			gotUsername = userInfo.Username
+		}
 	})
 	protectedHandler := auth.WithAuth(handler)
 	protectedHandler.ServeHTTP(w, r)
@@ -681,6 +687,11 @@ func TestWithAuth_ValidToken(t *testing.T) {
 		t.Error("Handler was called, when status code was not OK. Handler should not be called for error status codes.")
 	} else if code == http.StatusOK && !handlerCalled {
 		t.Error("Handler was not called, even though token was valid")
+	}
+
+	wantUsername := "testuser"
+	if gotUsername != wantUsername {
+		t.Errorf("Username stored in request context is %q, want %q", gotUsername, wantUsername)
 	}
 }
 

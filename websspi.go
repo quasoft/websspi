@@ -1,6 +1,7 @@
 package websspi
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/gob"
 	"errors"
@@ -268,86 +269,110 @@ func (a *Authenticator) GetUsername(context *CtxtHandle) (username string, err e
 	return
 }
 
+func (a *Authenticator) GetUserInfo(context *CtxtHandle) (*UserInfo, error) {
+	username, err := a.GetUsername(context)
+	if err != nil {
+		return nil, err
+	}
+	info := UserInfo{
+		Username: username,
+	}
+	return &info, nil
+}
+
 // Authenticate tries to authenticate the HTTP request and returns nil
 // if authentication was successful.
 // Returns error and data for continuation if authentication was not successful.
-func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (string, error) {
+func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (userInfo *UserInfo, outToken string, err error) {
 	// TODO:
 	// 1. Check if Authorization header is present
 	headers := r.Header["Authorization"]
 	if len(headers) == 0 {
-		return "", errors.New("the Authorization header is not provided")
+		err = errors.New("the Authorization header is not provided")
+		return
 	}
 	if len(headers) > 1 {
-		return "", errors.New("received multiple Authorization headers, but expected only one")
+		err = errors.New("received multiple Authorization headers, but expected only one")
+		return
 	}
 
 	authzHeader := strings.TrimSpace(headers[0])
 	if authzHeader == "" {
-		return "", errors.New("the Authorization header is empty")
+		err = errors.New("the Authorization header is empty")
+		return
 	}
 	// 1.1. Make sure header starts with "Negotiate"
 	if !strings.HasPrefix(strings.ToLower(authzHeader), "negotiate") {
-		return "", errors.New("the Authorization header does not start with 'Negotiate'")
+		err = errors.New("the Authorization header does not start with 'Negotiate'")
+		return
 	}
 
 	// 2. Extract token from Authorization header
 	authzParts := strings.Split(authzHeader, " ")
 	if len(authzParts) < 2 {
-		return "", errors.New("the Authorization header does not contain token (gssapi-data)")
+		err = errors.New("the Authorization header does not contain token (gssapi-data)")
+		return
 	}
 	token := authzParts[len(authzParts)-1]
 	if token == "" {
-		return "", errors.New("the token (gssapi-data) in the Authorization header is empty")
+		err = errors.New("the token (gssapi-data) in the Authorization header is empty")
+		return
 	}
 
 	// 3. Decode token
 	input, err := base64.StdEncoding.DecodeString(token)
 	if err != nil {
-		return "", errors.New("could not decode token as base64 string")
+		err = errors.New("could not decode token as base64 string")
+		return
 	}
 
 	// 4. Authenticate user with provided token
 	contextHandle, err := a.GetCtxHandle(r)
 	if err != nil {
-		return "", err
+		return
 	}
 	newCtx, output, _, status, err := a.AcceptOrContinue(contextHandle, input)
 	log.Printf("Accept status: 0x%x\n", status)
 	if newCtx != nil {
 		setErr := a.SetCtxHandle(r, w, newCtx)
 		if setErr != nil {
-			return "", setErr
+			err = setErr
+			return
 		}
 	}
+	outToken = base64.StdEncoding.EncodeToString(output)
 	if err != nil {
-		return "", fmt.Errorf("AcceptSecurityContext failed with status 0x%x; error: %s", status, err)
+		err = fmt.Errorf("AcceptSecurityContext failed with status 0x%x; error: %s", status, err)
+		return
 	}
 	if status == SEC_I_CONTINUE_NEEDED {
 		// Negotiation should continue by sending the output data back to the client
-		return base64.StdEncoding.EncodeToString(output), errors.New("Negotiation should continue")
+		err = errors.New("Negotiation should continue")
+		return
 	}
 
 	// 5. Get username
 	if newCtx == nil {
 		newCtx = contextHandle
 	}
-	username, err := a.GetUsername(newCtx)
+	userInfo, err = a.GetUserInfo(newCtx)
 	if err != nil {
 		// TODO: Delete security context
-		return "", fmt.Errorf("could not get username, error: %s", err)
+		err = fmt.Errorf("could not get username, error: %s", err)
+		return
 	}
 	// 6. Store username in http context
-	log.Printf("USERNAME: " + username + "\r\n")
+	log.Printf("USERNAME: " + userInfo.Username + "\r\n")
 
 	// 7. Delete security context
 	// TODO: Delete security context
 	err = a.SetCtxHandle(r, w, nil)
 	if err != nil {
-		return "", fmt.Errorf("could not clear context, error: %s", err)
+		err = fmt.Errorf("could not clear context, error: %s", err)
+		return
 	}
 
-	return base64.StdEncoding.EncodeToString(output), nil
+	return
 }
 
 // AppendAuthenticateHeader populates WWW-Authenticate header,
@@ -384,7 +409,7 @@ func (a *Authenticator) WithAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Authenticating request to %s\n", r.RequestURI)
 
-		data, err := a.Authenticate(r, w)
+		user, data, err := a.Authenticate(r, w)
 		if err != nil {
 			log.Printf("Authentication failed with error: %v\n", err)
 			a.Return401(w, data)
@@ -392,6 +417,9 @@ func (a *Authenticator) WithAuth(next http.Handler) http.Handler {
 		}
 
 		log.Print("Authenticated\n")
+		// Add the UserInfo value to the reqest's context
+		r = r.WithContext(context.WithValue(r.Context(), "UserInfo", user))
+
 		// The WWW-Authenticate header might need to be sent back even
 		// on successful authentication (eg. in order to let the client complete
 		// mutual authentication).
@@ -404,4 +432,5 @@ func (a *Authenticator) WithAuth(next http.Handler) http.Handler {
 
 func init() {
 	gob.Register(&CtxtHandle{})
+	gob.Register(&UserInfo{})
 }
