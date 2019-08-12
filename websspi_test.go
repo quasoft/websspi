@@ -653,7 +653,10 @@ func TestAuthenticate_ReturnOutputOnSecEOK(t *testing.T) {
 }
 
 func TestWithAuth_ValidToken(t *testing.T) {
+	data := [1]byte{0}
+	buf := SecBuffer{uint32(len(data)), SECBUFFER_TOKEN, &data[0]}
 	auth := newTestAuthenticator(t)
+	auth.Config.authAPI.(*stubAPI).acceptOutBuf = &buf
 
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
@@ -692,6 +695,12 @@ func TestWithAuth_ValidToken(t *testing.T) {
 	wantUsername := "testuser"
 	if gotUsername != wantUsername {
 		t.Errorf("Username stored in request context is %q, want %q", gotUsername, wantUsername)
+	}
+
+	wantHeader := "AA=="
+	gotHeader := w.Header().Get("WWW-Authenticate")
+	if !strings.Contains(gotHeader, wantHeader) {
+		t.Errorf("WithAuth() does not return output token when AcceptSecurityContext returns SEC_E_OK with output buffer, wanted token %q", wantHeader)
 	}
 }
 
