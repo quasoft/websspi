@@ -387,7 +387,6 @@ func (a *Authenticator) AppendAuthenticateHeader(w http.ResponseWriter, data str
 		value += " " + data
 	}
 	w.Header().Set("WWW-Authenticate", value)
-	http.Error(w, "Error!", http.StatusUnauthorized)
 }
 
 // Return401 populates WWW-Authenticate header, indicating to client that authentication
