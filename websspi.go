@@ -350,17 +350,27 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (st
 	return base64.StdEncoding.EncodeToString(output), nil
 }
 
-// Return401 populates WWW-Authenticate header, indicating to client that authentication
-// is required and returns a 401 (Unauthorized) response code.
+// AppendAuthenticateHeader populates WWW-Authenticate header,
+// indicating to client that authentication is required and returns a 401 (Unauthorized)
+// response code.
 // The data parameter can be empty for the first 401 response from the server.
 // For subsequent 401 responses the data parameter should contain the gssapi-data,
 // which is required for continuation of the negotiation.
-func (a *Authenticator) Return401(w http.ResponseWriter, data string) {
+func (a *Authenticator) AppendAuthenticateHeader(w http.ResponseWriter, data string) {
 	value := "Negotiate"
 	if data != "" {
 		value += " " + data
 	}
 	w.Header().Set("WWW-Authenticate", value)
+	http.Error(w, "Error!", http.StatusUnauthorized)
+}
+
+// Return401 populates WWW-Authenticate header, indicating to client that authentication
+// is required and returns a 401 (Unauthorized) response code.
+// The data parameter can be empty for the first 401 response from the server.
+// For subsequent 401 responses the data parameter should contain the gssapi-data,
+// which is required for continuation of the negotiation.
+func (a *Authenticator) Return401(w http.ResponseWriter) {
 	http.Error(w, "Error!", http.StatusUnauthorized)
 }
 
@@ -376,11 +386,18 @@ func (a *Authenticator) WithAuth(next http.Handler) http.Handler {
 		data, err := a.Authenticate(r, w)
 		if err != nil {
 			log.Printf("Authentication failed with error: %v\n", err)
-			a.Return401(w, data)
+			a.AppendAuthenticateHeader(w, data)
+			a.Return401(w)
 			return
 		}
 
 		log.Print("Authenticated\n")
+		// The WWW-Authenticate header might need to be sent back even
+		// on successful authentication (eg. in order to let the client complete
+		// mutual authentication).
+		if data != "" {
+			a.AppendAuthenticateHeader(w, data)
+		}
 		next.ServeHTTP(w, r)
 	})
 }
