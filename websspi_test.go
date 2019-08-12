@@ -635,6 +635,23 @@ func TestAuthenticate_ValidToken(t *testing.T) {
 	}
 }
 
+func TestAuthenticate_ReturnOutputOnSecEOK(t *testing.T) {
+	data := [1]byte{0}
+	buf := SecBuffer{uint32(len(data)), SECBUFFER_TOKEN, &data[0]}
+	auth := newTestAuthenticator(t)
+	auth.Config.authAPI.(*stubAPI).acceptStatus = SEC_E_OK
+	auth.Config.authAPI.(*stubAPI).acceptOutBuf = &buf
+
+	r := httptest.NewRequest("GET", "http://example.local/", nil)
+	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
+
+	want := "AA=="
+	output, _ := auth.Authenticate(r, nil)
+	if output == "" {
+		t.Errorf("Authenticate() returns empty output token when AcceptSecurityContext returns SEC_E_OK with output buffer, wanted %q", want)
+	}
+}
+
 func TestWithAuth_ValidToken(t *testing.T) {
 	auth := newTestAuthenticator(t)
 

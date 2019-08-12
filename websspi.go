@@ -347,7 +347,7 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (st
 		return "", fmt.Errorf("could not clear context, error: %s", err)
 	}
 
-	return "", nil
+	return base64.StdEncoding.EncodeToString(output), nil
 }
 
 // Return401 populates WWW-Authenticate header, indicating to client that authentication
