@@ -334,12 +334,14 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (st
 	}
 	username, err := a.GetUsername(newCtx)
 	if err != nil {
+		// TODO: Delete security context
 		return "", fmt.Errorf("could not get username, error: %s", err)
 	}
 	// 6. Store username in http context
 	log.Printf("USERNAME: " + username + "\r\n")
 
 	// 7. Delete security context
+	// TODO: Delete security context
 	err = a.SetCtxHandle(r, w, nil)
 	if err != nil {
 		return "", fmt.Errorf("could not clear context, error: %s", err)
