@@ -370,7 +370,8 @@ func (a *Authenticator) AppendAuthenticateHeader(w http.ResponseWriter, data str
 // The data parameter can be empty for the first 401 response from the server.
 // For subsequent 401 responses the data parameter should contain the gssapi-data,
 // which is required for continuation of the negotiation.
-func (a *Authenticator) Return401(w http.ResponseWriter) {
+func (a *Authenticator) Return401(w http.ResponseWriter, data string) {
+	a.AppendAuthenticateHeader(w, data)
 	http.Error(w, "Error!", http.StatusUnauthorized)
 }
 
@@ -386,8 +387,7 @@ func (a *Authenticator) WithAuth(next http.Handler) http.Handler {
 		data, err := a.Authenticate(r, w)
 		if err != nil {
 			log.Printf("Authentication failed with error: %v\n", err)
-			a.AppendAuthenticateHeader(w, data)
-			a.Return401(w)
+			a.Return401(w, data)
 			return
 		}
 
