@@ -140,11 +140,11 @@ func (a *Authenticator) Free() error {
 	return nil
 }
 
-// AcceptOrContinue tries to validate the input token by calling the AcceptSecurityContext
+// AcceptOrContinue tries to validate the auth-data token by calling the AcceptSecurityContext
 // function and returns and error if validation failed or continuation of the negotiation is needed.
 // No error is returned if the token was validated (user was authenticated).
-func (a *Authenticator) AcceptOrContinue(context *CtxtHandle, input []byte) (newCtx *CtxtHandle, out []byte, exp *time.Time, status SECURITY_STATUS, err error) {
-	if input == nil {
+func (a *Authenticator) AcceptOrContinue(context *CtxtHandle, authData []byte) (newCtx *CtxtHandle, out []byte, exp *time.Time, status SECURITY_STATUS, err error) {
+	if authData == nil {
 		err = errors.New("input token cannot be nil")
 		status = SEC_E_INVALID_TOKEN
 		return
@@ -155,9 +155,9 @@ func (a *Authenticator) AcceptOrContinue(context *CtxtHandle, input []byte) (new
 	inputDesc.BuffersCount = 1
 	inputDesc.Version = SECBUFFER_VERSION
 	inputDesc.Buffers = &inputBuf
-	inputBuf.BufferSize = uint32(len(input))
+	inputBuf.BufferSize = uint32(len(authData))
 	inputBuf.BufferType = SECBUFFER_TOKEN
-	inputBuf.Buffer = &input[0]
+	inputBuf.Buffer = &authData[0]
 
 	var outputDesc SecBufferDesc
 	var outputBuf SecBuffer
@@ -281,11 +281,9 @@ func (a *Authenticator) GetUserInfo(context *CtxtHandle) (*UserInfo, error) {
 	return &info, nil
 }
 
-// Authenticate tries to authenticate the HTTP request and returns nil
-// if authentication was successful.
-// Returns error and data for continuation if authentication was not successful.
-func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (userInfo *UserInfo, outToken string, err error) {
-	// TODO:
+// GetAuthData parses the "Authorization" header received from the client,
+// extracts the auth-data token (input token) and decodes it to []byte
+func (a *Authenticator) GetAuthData(r *http.Request, w http.ResponseWriter) (authData []byte, err error) {
 	// 1. Check if Authorization header is present
 	headers := r.Header["Authorization"]
 	if len(headers) == 0 {
@@ -321,18 +319,32 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (us
 	}
 
 	// 3. Decode token
-	input, err := base64.StdEncoding.DecodeString(token)
+	authData, err = base64.StdEncoding.DecodeString(token)
 	if err != nil {
 		err = errors.New("could not decode token as base64 string")
 		return
 	}
 
-	// 4. Authenticate user with provided token
+	return
+}
+
+// Authenticate tries to authenticate the HTTP request and returns nil
+// if authentication was successful.
+// Returns error and data for continuation if authentication was not successful.
+func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (userInfo *UserInfo, outToken string, err error) {
+	// 1. Extract auth-data from Authorization header
+	authData, err := a.GetAuthData(r, w)
+	if err != nil {
+		err = fmt.Errorf("could not get auth data: %s", err)
+		return
+	}
+
+	// 2. Authenticate user with provided token
 	contextHandle, err := a.GetCtxHandle(r)
 	if err != nil {
 		return
 	}
-	newCtx, output, _, status, err := a.AcceptOrContinue(contextHandle, input)
+	newCtx, output, _, status, err := a.AcceptOrContinue(contextHandle, authData)
 	log.Printf("Accept status: 0x%x\n", status)
 	if newCtx != nil {
 		setErr := a.SetCtxHandle(r, w, newCtx)
@@ -352,7 +364,7 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (us
 		return
 	}
 
-	// 5. Get username
+	// 3. Get username
 	if newCtx == nil {
 		newCtx = contextHandle
 	}
@@ -362,10 +374,10 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (us
 		err = fmt.Errorf("could not get username, error: %s", err)
 		return
 	}
-	// 6. Store username in http context
+	// 4. Store username in http context
 	log.Printf("USERNAME: " + userInfo.Username + "\r\n")
 
-	// 7. Delete security context
+	// 5. Delete security context
 	// TODO: Delete security context
 	err = a.SetCtxHandle(r, w, nil)
 	if err != nil {
