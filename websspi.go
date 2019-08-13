@@ -231,7 +231,7 @@ func (a *Authenticator) GetCtxHandle(r *http.Request) (*CtxtHandle, error) {
 	return nil, nil
 }
 
-// SetCtxHandle retrieves the context handle for this client from request's cookies
+// SetCtxHandle stores the context handle for this client to cookie of response
 func (a *Authenticator) SetCtxHandle(r *http.Request, w http.ResponseWriter, newContext *CtxtHandle) error {
 	// Store can't store nil value, so if newContext is nil, store an empty CtxHandle
 	ctx := &CtxtHandle{}
