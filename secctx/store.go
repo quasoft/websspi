@@ -1,4 +1,4 @@
-package sspicontext
+package secctx
 
 import "net/http"
 

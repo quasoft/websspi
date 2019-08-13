@@ -14,12 +14,12 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/quasoft/websspi/sspicontext"
+	"github.com/quasoft/websspi/secctx"
 )
 
 // The Config object determines the behaviour of the Authenticator.
 type Config struct {
-	contextStore sspicontext.Store
+	contextStore secctx.Store
 	authAPI      API
 	KrbPrincipal string // Name of Kerberos principle used by the service
 }
@@ -27,7 +27,7 @@ type Config struct {
 // NewConfig creates a configuration object with default values.
 func NewConfig() *Config {
 	return &Config{
-		contextStore: sspicontext.NewCookieStore(),
+		contextStore: secctx.NewCookieStore(),
 		authAPI:      &Secur32{},
 	}
 }
