@@ -176,8 +176,9 @@ func (a *Authenticator) AcceptOrContinue(context *CtxtHandle, input []byte) (new
 		a.serverCred,
 		context,
 		&inputDesc,
-		ASC_REQ_ALLOCATE_MEMORY|ASC_REQ_MUTUAL_AUTH, // contextReq uint32,
-		SECURITY_NATIVE_DREP,                        // targDataRep uint32,
+		ASC_REQ_ALLOCATE_MEMORY|ASC_REQ_MUTUAL_AUTH|ASC_REQ_CONFIDENTIALITY|
+			ASC_REQ_INTEGRITY|ASC_REQ_REPLAY_DETECT|ASC_REQ_SEQUENCE_DETECT, // contextReq uint32,
+		SECURITY_NATIVE_DREP, // targDataRep uint32,
 		&newContextHandle,
 		&outputDesc,  // *SecBufferDesc
 		&contextAttr, // contextAttr *uint32,
