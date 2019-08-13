@@ -385,6 +385,15 @@ func TestAcceptOrContinue_OnErrorStatus(t *testing.T) {
 	}
 }
 
+func TestGetFlags_ErrorOnQueryAttributes(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	auth.Config.authAPI.(*stubAPI).queryStatus = SEC_E_INTERNAL_ERROR
+	_, err := auth.GetFlags(&CtxtHandle{0, 0})
+	if err == nil {
+		t.Errorf("GetFlags() returns no error when QueryContextAttributes fails, wanted an error")
+	}
+}
+
 func TestGetUsername_ErrorOnQueryAttributes(t *testing.T) {
 	auth := newTestAuthenticator(t)
 	auth.Config.authAPI.(*stubAPI).queryStatus = SEC_E_INTERNAL_ERROR

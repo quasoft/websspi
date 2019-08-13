@@ -97,6 +97,10 @@ type SecPkgContext_Names struct {
 	UserName *uint16
 }
 
+type SecPkgContext_Flags struct {
+	Flags uint32
+}
+
 // The API interface describes the functions from secur32 used in this package and
 // its primary purpose is to allow replacing them with stub functions in unit tests.
 type API interface {

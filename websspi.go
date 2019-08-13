@@ -254,6 +254,16 @@ func (a *Authenticator) SetCtxHandle(r *http.Request, w http.ResponseWriter, new
 	return nil
 }
 
+// GetFlags returns the negotiated context flags
+func (a *Authenticator) GetFlags(context *CtxtHandle) (uint32, error) {
+	var flags SecPkgContext_Flags
+	status := a.Config.authAPI.QueryContextAttributes(context, SECPKG_ATTR_FLAGS, (*byte)(unsafe.Pointer(&flags)))
+	if status != SEC_E_OK {
+		return 0, fmt.Errorf("QueryContextAttributes failed with status 0x%x", status)
+	}
+	return flags.Flags, nil
+}
+
 // GetUsername returns the name of the user associated with the specified security context
 func (a *Authenticator) GetUsername(context *CtxtHandle) (username string, err error) {
 	var names SecPkgContext_Names
