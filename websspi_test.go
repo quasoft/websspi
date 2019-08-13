@@ -300,7 +300,7 @@ func TestAcceptOrContinue_GetEmptyCtxHandle(t *testing.T) {
 
 func TestAcceptOrContinue_WithEmptyInput(t *testing.T) {
 	auth := newTestAuthenticator(t)
-	_, _, _, _, err := auth.AcceptOrContinue(nil, nil)
+	_, _, _, err := auth.AcceptOrContinue(nil, nil)
 	// AcceptOrContinue should not panic on nil arguments
 	if err == nil {
 		t.Error("AcceptOrContinue(nil, nil) returned no error, should have returned an error")
@@ -312,7 +312,7 @@ func TestAcceptOrContinue_WithOutputBuffer(t *testing.T) {
 	buf := SecBuffer{uint32(len(wantData)), SECBUFFER_TOKEN, &wantData[0]}
 	auth := newTestAuthenticator(t)
 	auth.Config.authAPI.(*stubAPI).acceptOutBuf = &buf
-	_, gotOut, _, _, _ := auth.AcceptOrContinue(nil, []byte{0})
+	_, gotOut, _, _ := auth.AcceptOrContinue(nil, []byte{0})
 	if gotOut == nil {
 		t.Fatalf("AcceptOrContinue() returned no output data, wanted %v", wantData)
 	}
@@ -327,7 +327,7 @@ func TestAcceptOrContinue_ErrorOnFreeBuffer(t *testing.T) {
 	auth := newTestAuthenticator(t)
 	auth.Config.authAPI.(*stubAPI).acceptOutBuf = &buf
 	auth.Config.authAPI.(*stubAPI).freeBufferStatus = SEC_E_INVALID_HANDLE
-	_, _, _, _, err := auth.AcceptOrContinue(nil, []byte{0})
+	_, _, _, err := auth.AcceptOrContinue(nil, []byte{0})
 	if err == nil {
 		t.Error("AcceptOrContinue() returns no error when FreeContextBuffer fails, should have returned an error")
 	}
@@ -336,7 +336,7 @@ func TestAcceptOrContinue_ErrorOnFreeBuffer(t *testing.T) {
 func TestAcceptOrContinue_WithoutNewContext(t *testing.T) {
 	auth := newTestAuthenticator(t)
 	auth.Config.authAPI.(*stubAPI).acceptNewCtx = &CtxtHandle{0, 0}
-	newCtx, _, _, _, _ := auth.AcceptOrContinue(nil, []byte{0})
+	newCtx, _, _, _ := auth.AcceptOrContinue(nil, []byte{0})
 	if newCtx != nil {
 		t.Error("AcceptOrContinue() returned a new context handle for a simulated call to AcceptSecurityContext that returns NULL")
 	}
@@ -345,7 +345,7 @@ func TestAcceptOrContinue_WithoutNewContext(t *testing.T) {
 func TestAcceptOrContinue_WithNewContext(t *testing.T) {
 	auth := newTestAuthenticator(t)
 	auth.Config.authAPI.(*stubAPI).acceptNewCtx = &CtxtHandle{42, 314}
-	gotNewCtx, _, _, _, _ := auth.AcceptOrContinue(nil, []byte{0})
+	gotNewCtx, _, _, _ := auth.AcceptOrContinue(nil, []byte{0})
 	if gotNewCtx == nil {
 		t.Fatal("AcceptOrContinue() returned nil for new context handle for a simulated call to AcceptSecurityContext that returns a valid handle")
 	}
@@ -377,7 +377,7 @@ func TestAcceptOrContinue_OnErrorStatus(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			auth.Config.authAPI.(*stubAPI).acceptStatus = tt.errorStatus
-			_, _, _, _, err := auth.AcceptOrContinue(nil, []byte{0})
+			_, _, _, err := auth.AcceptOrContinue(nil, []byte{0})
 			if err == nil {
 				t.Errorf("AcceptOrContinue() returns no error when AcceptSecurityContext fails with %s", tt.name)
 			}

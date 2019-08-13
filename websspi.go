@@ -143,7 +143,9 @@ func (a *Authenticator) Free() error {
 // AcceptOrContinue tries to validate the auth-data token by calling the AcceptSecurityContext
 // function and returns and error if validation failed or continuation of the negotiation is needed.
 // No error is returned if the token was validated (user was authenticated).
-func (a *Authenticator) AcceptOrContinue(context *CtxtHandle, authData []byte) (newCtx *CtxtHandle, out []byte, exp *time.Time, status SECURITY_STATUS, err error) {
+func (a *Authenticator) AcceptOrContinue(context *CtxtHandle, authData []byte) (newCtx *CtxtHandle, out []byte, exp *time.Time, err error) {
+	var status = SEC_E_INTERNAL_ERROR
+
 	if authData == nil {
 		err = errors.New("input token cannot be nil")
 		status = SEC_E_INVALID_TOKEN
@@ -206,7 +208,9 @@ func (a *Authenticator) AcceptOrContinue(context *CtxtHandle, authData []byte) (
 			return
 		}
 	}
-	if status != SEC_E_OK && status != SEC_I_CONTINUE_NEEDED {
+	if status == SEC_I_CONTINUE_NEEDED {
+		err = errors.New("Negotiation should continue")
+	} else if status != SEC_E_OK {
 		err = fmt.Errorf("call to AcceptSecurityContext failed with code 0x%x", status)
 		return
 	}
@@ -344,8 +348,7 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (us
 	if err != nil {
 		return
 	}
-	newCtx, output, _, status, err := a.AcceptOrContinue(contextHandle, authData)
-	log.Printf("Accept status: 0x%x\n", status)
+	newCtx, output, _, err := a.AcceptOrContinue(contextHandle, authData)
 	if newCtx != nil {
 		setErr := a.SetCtxHandle(r, w, newCtx)
 		if setErr != nil {
@@ -355,12 +358,7 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (us
 	}
 	outToken = base64.StdEncoding.EncodeToString(output)
 	if err != nil {
-		err = fmt.Errorf("AcceptSecurityContext failed with status 0x%x; error: %s", status, err)
-		return
-	}
-	if status == SEC_I_CONTINUE_NEEDED {
-		// Negotiation should continue by sending the output data back to the client
-		err = errors.New("Negotiation should continue")
+		err = fmt.Errorf("AcceptOrContinue failed: %s", err)
 		return
 	}
 
@@ -374,6 +372,7 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (us
 		err = fmt.Errorf("could not get username, error: %s", err)
 		return
 	}
+
 	// 4. Store username in http context
 	log.Printf("USERNAME: " + userInfo.Username + "\r\n")
 
