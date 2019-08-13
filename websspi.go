@@ -258,9 +258,9 @@ func (a *Authenticator) GetUsername(context *CtxtHandle) (username string, err e
 		err = fmt.Errorf("QueryContextAttributes failed with status 0x%x", status)
 		return
 	}
-	if names.userName != nil {
-		username = UTF16PtrToString(names.userName, 2048)
-		status = a.Config.authAPI.FreeContextBuffer((*byte)(unsafe.Pointer(names.userName)))
+	if names.UserName != nil {
+		username = UTF16PtrToString(names.UserName, 2048)
+		status = a.Config.authAPI.FreeContextBuffer((*byte)(unsafe.Pointer(names.UserName)))
 		if status != SEC_E_OK {
 			err = fmt.Errorf("FreeContextBuffer failed with status 0x%x", status)
 		}

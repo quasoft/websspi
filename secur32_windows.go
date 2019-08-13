@@ -94,7 +94,7 @@ type LUID struct {
 }
 
 type SecPkgContext_Names struct {
-	userName *uint16
+	UserName *uint16
 }
 
 // The API interface describes the functions from secur32 used in this package and

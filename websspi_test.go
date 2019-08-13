@@ -118,7 +118,7 @@ func newTestAuthenticator(t *testing.T) *Authenticator {
 			acceptOutBuf:     nil,
 			deleteStatus:     SEC_E_OK,
 			queryStatus:      SEC_E_OK,
-			queryOutBuf:      (*byte)(unsafe.Pointer(&SecPkgContext_Names{userName: names})),
+			queryOutBuf:      (*byte)(unsafe.Pointer(&SecPkgContext_Names{UserName: names})),
 			freeBufferStatus: SEC_E_OK,
 			freeCredsStatus:  SEC_E_OK,
 			validToken:       "a87421000492aa874209af8bc028",
