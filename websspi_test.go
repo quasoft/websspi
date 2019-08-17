@@ -196,14 +196,9 @@ func TestFree_ErrorOnFreeCredentials(t *testing.T) {
 
 func TestFree_DeleteContexts(t *testing.T) {
 	auth := newTestAuthenticator(t)
-	r := httptest.NewRequest("GET", "http://localhost:9000/", nil)
-	w := httptest.NewRecorder()
 	ctx := CtxtHandle{42, 314}
-	err := auth.SetCtxHandle(r, w, &ctx)
-	if err != nil {
-		t.Fatalf("SetCtxHandle() failed with error %s, wanted no error", err)
-	}
-	err = auth.Free()
+	auth.StoreCtxHandle(&ctx)
+	err := auth.Free()
 	if err != nil {
 		t.Fatalf("Free() failed with error %s, wanted no error", err)
 	}
@@ -218,14 +213,9 @@ func TestFree_DeleteContexts(t *testing.T) {
 func TestFree_ErrorOnDeleteContexts(t *testing.T) {
 	auth := newTestAuthenticator(t)
 	auth.Config.authAPI.(*stubAPI).deleteStatus = SEC_E_INTERNAL_ERROR
-	r := httptest.NewRequest("GET", "http://localhost:9000/", nil)
-	w := httptest.NewRecorder()
 	ctx := CtxtHandle{42, 314}
-	err := auth.SetCtxHandle(r, w, &ctx)
-	if err != nil {
-		t.Fatalf("SetCtxHandle() failed with error %s, wanted no error", err)
-	}
-	err = auth.Free()
+	auth.StoreCtxHandle(&ctx)
+	err := auth.Free()
 	if err == nil {
 		t.Errorf("Free() returns no error when DeleteSecurityContext fails, wanted an error")
 	}

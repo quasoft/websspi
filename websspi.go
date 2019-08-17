@@ -140,6 +140,47 @@ func (a *Authenticator) Free() error {
 	return nil
 }
 
+// StoreCtxHandle stores the specified context to the internal list (ctxList)
+func (a *Authenticator) StoreCtxHandle(handle *CtxtHandle) {
+	if handle == nil || *handle == (CtxtHandle{}) {
+		// Should not add nil or empty handle
+		return
+	}
+	a.ctxListMux.Lock()
+	defer a.ctxListMux.Unlock()
+	a.ctxList = append(a.ctxList, *handle)
+}
+
+// ReleaseCtxHandle deletes a context handle and removes it from the internal list (ctxList)
+func (a *Authenticator) ReleaseCtxHandle(handle *CtxtHandle) error {
+	if handle == nil || *handle == (CtxtHandle{}) {
+		// Removing a nil or empty handle is not an error condition
+		return nil
+	}
+	a.ctxListMux.Lock()
+	defer a.ctxListMux.Unlock()
+
+	// First, try to delete the handle
+	status := a.Config.authAPI.DeleteSecurityContext(handle)
+	if status != SEC_E_OK {
+		return fmt.Errorf("call to DeleteSecurityContext failed with code 0x%x", status)
+	}
+
+	// Then remove it from the internal list
+	foundAt := -1
+	for i, ctx := range a.ctxList {
+		if ctx == *handle {
+			foundAt = i
+			break
+		}
+	}
+	if foundAt > -1 {
+		a.ctxList[foundAt] = a.ctxList[len(a.ctxList)-1]
+		a.ctxList = a.ctxList[:len(a.ctxList)-1]
+	}
+	return nil
+}
+
 // AcceptOrContinue tries to validate the auth-data token by calling the AcceptSecurityContext
 // function and returns and error if validation failed or continuation of the negotiation is needed.
 // No error is returned if the token was validated (user was authenticated).
@@ -242,14 +283,10 @@ func (a *Authenticator) SetCtxHandle(r *http.Request, w http.ResponseWriter, new
 	if newContext != nil {
 		ctx = newContext
 	}
-	// TODO: Delete previous context
 	err := a.Config.contextStore.SetHandle(r, w, ctx)
 	if err != nil {
 		return fmt.Errorf("could not save context to cookie: %s", err)
 	}
-	a.ctxListMux.Lock()
-	a.ctxList = append(a.ctxList, *ctx)
-	a.ctxListMux.Unlock()
 	log.Printf("New context: 0x%x\n", *ctx)
 	return nil
 }
@@ -359,13 +396,60 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (us
 		return
 	}
 	newCtx, output, _, err := a.AcceptOrContinue(contextHandle, authData)
-	if newCtx != nil {
-		setErr := a.SetCtxHandle(r, w, newCtx)
-		if setErr != nil {
-			err = setErr
+
+	// If a new context was created, make sure to delete it or store it
+	// both in internal list and response Cookie
+	defer func() {
+		// Negotiation is ending if we don't expect further responses from the client
+		// (authentication was successful or no output token is going to be sent back),
+		// clear client cookie
+		endOfNegotiation := err == nil || len(output) == 0
+
+		// Current context (contextHandle) is not needed anymore and should be deleted if:
+		// - we don't expect further responses from the client
+		// - a new context has been returned by AcceptSecurityContext
+		currCtxNotNeeded := endOfNegotiation || newCtx != nil
+		if !currCtxNotNeeded {
+			// Release current context only if its different than the new context
+			if contextHandle != nil && *contextHandle != *newCtx {
+				remErr := a.ReleaseCtxHandle(contextHandle)
+				if remErr != nil {
+					err = remErr
+					return
+				}
+			}
+		}
+
+		if endOfNegotiation {
+			// Clear client cookie
+			setErr := a.SetCtxHandle(r, w, nil)
+			if setErr != nil {
+				err = fmt.Errorf("could not clear context, error: %s", setErr)
+				return
+			}
+
+			// Delete any new context handle
+			remErr := a.ReleaseCtxHandle(newCtx)
+			if remErr != nil {
+				err = remErr
+				return
+			}
+
+			// Exit defer func
 			return
 		}
-	}
+
+		if newCtx != nil {
+			// Store new context handle to internal list and response Cookie
+			a.StoreCtxHandle(newCtx)
+			setErr := a.SetCtxHandle(r, w, newCtx)
+			if setErr != nil {
+				err = setErr
+				return
+			}
+		}
+	}()
+
 	outToken = base64.StdEncoding.EncodeToString(output)
 	if err != nil {
 		err = fmt.Errorf("AcceptOrContinue failed: %s", err)
@@ -373,24 +457,13 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (us
 	}
 
 	// 3. Get username
-	if newCtx == nil {
-		newCtx = contextHandle
+	currentCtx := newCtx
+	if currentCtx == nil {
+		currentCtx = contextHandle
 	}
-	userInfo, err = a.GetUserInfo(newCtx)
+	userInfo, err = a.GetUserInfo(currentCtx)
 	if err != nil {
-		// TODO: Delete security context
 		err = fmt.Errorf("could not get username, error: %s", err)
-		return
-	}
-
-	// 4. Store username in http context
-	log.Printf("USERNAME: " + userInfo.Username + "\r\n")
-
-	// 5. Delete security context
-	// TODO: Delete security context
-	err = a.SetCtxHandle(r, w, nil)
-	if err != nil {
-		err = fmt.Errorf("could not clear context, error: %s", err)
 		return
 	}
 
