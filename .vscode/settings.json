@@ -1,0 +1,5 @@
+{
+    "go.lintFlags": [
+        "[\"--exclude=\\\"\\bsecur32_windows.go\\b\\\"\"]"
+    ]
+}
