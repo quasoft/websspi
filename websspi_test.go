@@ -221,6 +221,56 @@ func TestFree_ErrorOnDeleteContexts(t *testing.T) {
 	}
 }
 
+func TestStoreCtxHandle(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	ctx := CtxtHandle{42, 314}
+	auth.StoreCtxHandle(&ctx)
+	if len(auth.ctxList) == 0 || auth.ctxList[0] != ctx {
+		t.Error("StoreCtxHandle() does not store the context handle")
+	}
+}
+
+func TestStoreCtxHandle_NilHandle(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	auth.StoreCtxHandle(nil)
+	if len(auth.ctxList) > 0 {
+		t.Errorf("StoreCtxHandle() stored a nil handle, got %v, wanted empty list", auth.ctxList)
+	}
+}
+
+func TestStoreCtxHandle_EmptyHandle(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	ctx := CtxtHandle{0, 0}
+	auth.StoreCtxHandle(&ctx)
+	if len(auth.ctxList) > 0 {
+		t.Errorf("StoreCtxHandle() stored an empty handle, got %v, wanted empty list", auth.ctxList)
+	}
+}
+
+func TestReleaseCtxHandle(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	ctx := CtxtHandle{42, 314}
+	auth.ctxList = append(auth.ctxList, ctx)
+	err := auth.ReleaseCtxHandle(&ctx)
+	if err != nil {
+		t.Fatalf("ReleaseCtxHandle() returned error %s, wanted no error", err)
+	}
+	if len(auth.ctxList) > 0 {
+		t.Errorf("ReleaseCtxHandle() did not clear the context list, got %v, wanted an empty list", auth.ctxList)
+	}
+}
+
+func TestReleaseCtxHandle_ErrorOnDeleteContexts(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	auth.Config.authAPI.(*stubAPI).deleteStatus = SEC_E_INTERNAL_ERROR
+	ctx := CtxtHandle{42, 314}
+	auth.ctxList = append(auth.ctxList, ctx)
+	err := auth.ReleaseCtxHandle(&ctx)
+	if err == nil {
+		t.Errorf("ReleaseCtxHandle() returns no error when DeleteSecurityContext fails, wanted an error")
+	}
+}
+
 func TestAcceptOrContinue_SetCtxHandle(t *testing.T) {
 	auth := newTestAuthenticator(t)
 	r := httptest.NewRequest("GET", "http://localhost:9000/", nil)
