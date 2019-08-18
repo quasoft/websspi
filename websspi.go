@@ -21,7 +21,8 @@ import (
 type Config struct {
 	contextStore secctx.Store
 	authAPI      API
-	KrbPrincipal string // Name of Kerberos principle used by the service
+	KrbPrincipal string // Name of Kerberos principle used by the service (optional).
+	AuthUserKey  string // Key of header to fill with authenticated username, eg. "X-Authenticated-User" or "REMOTE_USER" (optional).
 }
 
 // NewConfig creates a configuration object with default values.
@@ -513,6 +514,10 @@ func (a *Authenticator) WithAuth(next http.Handler) http.Handler {
 		log.Print("Authenticated\n")
 		// Add the UserInfo value to the reqest's context
 		r = r.WithContext(context.WithValue(r.Context(), "UserInfo", user))
+		// and to the request header with key Config.AuthUserKey
+		if a.Config.AuthUserKey != "" {
+			r.Header.Set(a.Config.AuthUserKey, user.Username)
+		}
 
 		// The WWW-Authenticate header might need to be sent back even
 		// on successful authentication (eg. in order to let the client complete

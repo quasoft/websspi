@@ -706,6 +706,7 @@ func TestWithAuth_ValidToken(t *testing.T) {
 	buf := SecBuffer{uint32(len(data)), SECBUFFER_TOKEN, &data[0]}
 	auth := newTestAuthenticator(t)
 	auth.Config.authAPI.(*stubAPI).acceptOutBuf = &buf
+	auth.Config.AuthUserKey = "REMOTE_USER"
 
 	r := httptest.NewRequest("GET", "http://example.local/", nil)
 	r.Header.Set("Authorization", "Negotiate a87421000492aa874209af8bc028")
@@ -713,6 +714,7 @@ func TestWithAuth_ValidToken(t *testing.T) {
 
 	handlerCalled := false
 	gotUsername := ""
+	gotRemoteUser := ""
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handlerCalled = true
 		info := r.Context().Value("UserInfo")
@@ -720,6 +722,7 @@ func TestWithAuth_ValidToken(t *testing.T) {
 		if ok && userInfo != nil {
 			gotUsername = userInfo.Username
 		}
+		gotRemoteUser = r.Header.Get("REMOTE_USER")
 	})
 	protectedHandler := auth.WithAuth(handler)
 	protectedHandler.ServeHTTP(w, r)
@@ -744,6 +747,11 @@ func TestWithAuth_ValidToken(t *testing.T) {
 	wantUsername := "testuser"
 	if gotUsername != wantUsername {
 		t.Errorf("Username stored in request context is %q, want %q", gotUsername, wantUsername)
+	}
+
+	wantRemoteUser := "testuser"
+	if gotRemoteUser != wantRemoteUser {
+		t.Errorf("Username in REMOTE_USER header is %q, want %q", gotRemoteUser, wantRemoteUser)
 	}
 
 	wantHeader := "AA=="
