@@ -1,5 +1,8 @@
 {
     "go.lintFlags": [
-        "[\"--exclude=\\\"\\bsecur32_windows.go\\b\\\"\"]"
-    ]
+        "[\"--exclude=\\\"\\bwin32_windows.go\\b\\\"\"]"
+    ],
+    "zenMode.centerLayout": false,
+    "zenMode.hideLineNumbers": false,
+    "zenMode.hideTabs": false
 }

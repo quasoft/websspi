@@ -19,17 +19,19 @@ import (
 
 // The Config object determines the behaviour of the Authenticator.
 type Config struct {
-	contextStore secctx.Store
-	authAPI      API
-	KrbPrincipal string // Name of Kerberos principle used by the service (optional).
-	AuthUserKey  string // Key of header to fill with authenticated username, eg. "X-Authenticated-User" or "REMOTE_USER" (optional).
+	contextStore    secctx.Store
+	authAPI         API
+	KrbPrincipal    string // Name of Kerberos principle used by the service (optional).
+	AuthUserKey     string // Key of header to fill with authenticated username, eg. "X-Authenticated-User" or "REMOTE_USER" (optional).
+	EnumerateGroups bool   // If true, groups the user is a member of are enumerated and stored in request context (default false)
+	ServerName      string // Specifies the DNS or NetBIOS name of the remote server which to query about user groups. Ignored if EnumerateGroups is false.
 }
 
 // NewConfig creates a configuration object with default values.
 func NewConfig() *Config {
 	return &Config{
 		contextStore: secctx.NewCookieStore(),
-		authAPI:      &Secur32{},
+		authAPI:      &Win32{},
 	}
 }
 
@@ -322,7 +324,64 @@ func (a *Authenticator) GetUsername(context *CtxtHandle) (username string, err e
 	return
 }
 
+// GetUserGroups returns the groups the user is a member of
+func (a *Authenticator) GetUserGroups(userName string) (groups []string, err error) {
+	var serverNamePtr *uint16
+	if a.Config.ServerName != "" {
+		serverNamePtr, err = syscall.UTF16PtrFromString(a.Config.ServerName)
+		if err != nil {
+			return
+		}
+	}
+
+	userNamePtr, err := syscall.UTF16PtrFromString(userName)
+	if err != nil {
+		return
+	}
+	var buf *byte
+	var entriesRead uint32
+	var totalEntries uint32
+	err = a.Config.authAPI.NetUserGetGroups(
+		serverNamePtr,
+		userNamePtr,
+		0,
+		&buf,
+		MAX_PREFERRED_LENGTH,
+		&entriesRead,
+		&totalEntries,
+	)
+	if buf == nil {
+		err = fmt.Errorf("NetUserGetGroups(): returned nil buffer, error: %s", err)
+		return
+	}
+	defer func() {
+		freeErr := a.Config.authAPI.NetApiBufferFree(buf)
+		if freeErr != nil {
+			err = freeErr
+		}
+	}()
+	if err != nil {
+		return
+	}
+	if entriesRead < totalEntries {
+		err = fmt.Errorf("NetUserGetGroups(): could not read all entries, read only %d entries of %d", entriesRead, totalEntries)
+		return
+	}
+
+	ptr := uintptr(unsafe.Pointer(buf))
+	for i := uint32(0); i < entriesRead; i++ {
+		groupInfo := (*GroupUsersInfo0)(unsafe.Pointer(ptr))
+		groupName := UTF16PtrToString(groupInfo.Grui0_name, MAX_GROUP_NAME_LENGTH)
+		if groupName != "" {
+			groups = append(groups, groupName)
+		}
+		ptr += unsafe.Sizeof(GroupUsersInfo0{})
+	}
+	return
+}
+
 func (a *Authenticator) GetUserInfo(context *CtxtHandle) (*UserInfo, error) {
+	// Get username
 	username, err := a.GetUsername(context)
 	if err != nil {
 		return nil, err
@@ -330,6 +389,15 @@ func (a *Authenticator) GetUserInfo(context *CtxtHandle) (*UserInfo, error) {
 	info := UserInfo{
 		Username: username,
 	}
+
+	// Get groups
+	if a.Config.EnumerateGroups {
+		info.Groups, err = a.GetUserGroups(username)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &info, nil
 }
 
@@ -457,7 +525,7 @@ func (a *Authenticator) Authenticate(r *http.Request, w http.ResponseWriter) (us
 		return
 	}
 
-	// 3. Get username
+	// 3. Get username and user groups
 	currentCtx := newCtx
 	if currentCtx == nil {
 		currentCtx = contextHandle

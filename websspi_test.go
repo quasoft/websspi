@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"syscall"
 	"testing"
@@ -23,6 +24,11 @@ type stubAPI struct {
 	freeBufferStatus SECURITY_STATUS // the status code that should be returned in simulated calls to FreeContextBuffer
 	freeCredsStatus  SECURITY_STATUS // the status code that should be returned in simulated calls to FreeCredentialsHandle
 	validToken       string          // value that will be asumed to be a valid token
+	getGroupsErr     error           // error to be returned in simulated calls to NetUserGetGroups
+	getGroupsBuf     *byte           // the buffer to be returned in simulated calls to NetUserGetGroups
+	getGroupsEntries uint32          // entriesRead to be returned in simulated calls to NetUserGetGroups
+	getGroupsTotal   uint32          // totalEntries to be returned in simulated calls to NetUserGetGroups
+	netBufferFreeErr error           // error to be returned in simulated calls to NetApiBufferFree
 }
 
 func (s *stubAPI) AcquireCredentialsHandle(
@@ -88,6 +94,25 @@ func (s *stubAPI) FreeCredentialsHandle(handle *CredHandle) SECURITY_STATUS {
 	return s.freeCredsStatus
 }
 
+func (s *stubAPI) NetUserGetGroups(
+	serverName *uint16,
+	userName *uint16,
+	level uint32,
+	buf **byte,
+	prefmaxlen uint32,
+	entriesread *uint32,
+	totalentries *uint32,
+) (neterr error) {
+	*buf = s.getGroupsBuf
+	*entriesread = s.getGroupsEntries
+	*totalentries = s.getGroupsTotal
+	return s.getGroupsErr
+}
+
+func (s *stubAPI) NetApiBufferFree(buf *byte) (neterr error) {
+	return s.netBufferFreeErr
+}
+
 type stubContextStore struct {
 	contextHandle interface{} // local storage for the last value set by SetHandle
 	getError      error       // Error value that should be returned on calls to GetHandle
@@ -103,12 +128,33 @@ func (s *stubContextStore) SetHandle(r *http.Request, w http.ResponseWriter, con
 	return s.setError
 }
 
-// newTestAuthenticator creates an Authenticator for use in tests.
-func newTestAuthenticator(t *testing.T) *Authenticator {
-	names, err := syscall.UTF16PtrFromString("testuser")
+func newSecPkgContextNames() *byte {
+	username, err := syscall.UTF16PtrFromString("testuser")
 	if err != nil {
 		panic(err)
 	}
+	return (*byte)(unsafe.Pointer(&SecPkgContext_Names{UserName: username}))
+}
+
+func newGroupUsersInfo0() (entires uint32, total uint32, buf *byte) {
+	groupNames := []string{"group1", "group2", "group3"}
+	info := []GroupUsersInfo0{}
+	for _, name := range groupNames {
+		namePtr, err := syscall.UTF16PtrFromString(name)
+		if err != nil {
+			panic(err)
+		}
+		info = append(info, GroupUsersInfo0{Grui0_name: namePtr})
+	}
+	entires = uint32(len(groupNames))
+	total = entires
+	buf = (*byte)(unsafe.Pointer(&info[0]))
+	return
+}
+
+// newTestAuthenticator creates an Authenticator for use in tests.
+func newTestAuthenticator(t *testing.T) *Authenticator {
+	entries, total, groupsBuf := newGroupUsersInfo0()
 	config := Config{
 		contextStore: &stubContextStore{},
 		authAPI: &stubAPI{
@@ -118,12 +164,19 @@ func newTestAuthenticator(t *testing.T) *Authenticator {
 			acceptOutBuf:     nil,
 			deleteStatus:     SEC_E_OK,
 			queryStatus:      SEC_E_OK,
-			queryOutBuf:      (*byte)(unsafe.Pointer(&SecPkgContext_Names{UserName: names})),
+			queryOutBuf:      newSecPkgContextNames(),
 			freeBufferStatus: SEC_E_OK,
 			freeCredsStatus:  SEC_E_OK,
 			validToken:       "a87421000492aa874209af8bc028",
+			getGroupsErr:     nil,
+			getGroupsBuf:     groupsBuf,
+			getGroupsEntries: entries,
+			getGroupsTotal:   total,
+			netBufferFreeErr: nil,
 		},
-		KrbPrincipal: "service@test.local",
+		KrbPrincipal:    "service@test.local",
+		EnumerateGroups: true,
+		ServerName:      "server.test.local",
 	}
 	auth, err := New(&config)
 	if err != nil {
@@ -463,6 +516,66 @@ func TestGetUsername_Valid(t *testing.T) {
 	}
 }
 
+func TestGetUserGroups_NilBuf(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	auth.Config.authAPI.(*stubAPI).getGroupsBuf = nil
+	auth.Config.authAPI.(*stubAPI).getGroupsEntries = 0
+	auth.Config.authAPI.(*stubAPI).getGroupsTotal = 0
+
+	_, err := auth.GetUserGroups("testuser")
+
+	if err == nil {
+		t.Errorf("GetUserGroups() returns no error when bufptr is nil, wanted an error")
+	}
+}
+
+func TestGetUserGroups_PartialRead(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	auth.Config.authAPI.(*stubAPI).getGroupsEntries = 1
+
+	_, err := auth.GetUserGroups("testuser")
+
+	if err == nil {
+		t.Errorf("GetUserGroups() returns no error when entries read (%d) < total entries (%d), wanted an error", 1, 3)
+	}
+}
+
+func TestGetUserGroups_ErrorOnGetGroups(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	auth.Config.authAPI.(*stubAPI).getGroupsErr = errors.New("simulated error")
+
+	_, err := auth.GetUserGroups("testuser")
+
+	if err == nil {
+		t.Error("GetUserGroups() returns no error when NetUserGetGroups fails, wanted an error")
+	}
+}
+
+func TestGetUserGroups_ErrorOnBufferFree(t *testing.T) {
+	auth := newTestAuthenticator(t)
+	auth.Config.authAPI.(*stubAPI).netBufferFreeErr = errors.New("simulated error")
+
+	_, err := auth.GetUserGroups("testuser")
+
+	if err == nil {
+		t.Error("GetUserGroups() returns no error when NetApiBufferFree fails, wanted an error")
+	}
+}
+
+func TestGetUserGroups_Valid(t *testing.T) {
+	want := []string{"group1", "group2", "group3"}
+	auth := newTestAuthenticator(t)
+
+	got, err := auth.GetUserGroups("testuser")
+
+	if err != nil {
+		t.Fatalf("GetUserGroups() failed with error %q, wanted no error", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("GetUserGroups() got %v, want %v", got, want)
+	}
+}
+
 func TestReturn401_Headers(t *testing.T) {
 	auth := newTestAuthenticator(t)
 	w := httptest.NewRecorder()
@@ -715,12 +828,14 @@ func TestWithAuth_ValidToken(t *testing.T) {
 	handlerCalled := false
 	gotUsername := ""
 	gotRemoteUser := ""
+	gotGroups := []string{}
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handlerCalled = true
 		info := r.Context().Value("UserInfo")
 		userInfo, ok := info.(*UserInfo)
 		if ok && userInfo != nil {
 			gotUsername = userInfo.Username
+			gotGroups = userInfo.Groups
 		}
 		gotRemoteUser = r.Header.Get("REMOTE_USER")
 	})
@@ -747,6 +862,11 @@ func TestWithAuth_ValidToken(t *testing.T) {
 	wantUsername := "testuser"
 	if gotUsername != wantUsername {
 		t.Errorf("Username stored in request context is %q, want %q", gotUsername, wantUsername)
+	}
+
+	wantGroups := []string{"group1", "group2", "group3"}
+	if !reflect.DeepEqual(gotGroups, wantGroups) {
+		t.Errorf("Groups stored in request context are %q, want %q", gotGroups, wantGroups)
 	}
 
 	wantRemoteUser := "testuser"

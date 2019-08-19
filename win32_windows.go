@@ -7,6 +7,8 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// secur32.dll
+
 type SECURITY_STATUS syscall.Errno
 
 const (
@@ -101,7 +103,44 @@ type SecPkgContext_Flags struct {
 	Flags uint32
 }
 
-// The API interface describes the functions from secur32 used in this package and
+// netapi32.dll
+
+const (
+	NERR_Success       = 0x0
+	NERR_InternalError = 0x85C
+	NERR_UserNotFound  = 0x8AD
+
+	ERROR_ACCESS_DENIED     = 0x5
+	ERROR_BAD_NETPATH       = 0x35
+	ERROR_INVALID_LEVEL     = 0x7C
+	ERROR_INVALID_NAME      = 0x7B
+	ERROR_MORE_DATA         = 0xEA
+	ERROR_NOT_ENOUGH_MEMORY = 0x8
+
+	MAX_PREFERRED_LENGTH  = 0xFFFFFFFF
+	MAX_GROUP_NAME_LENGTH = 256
+
+	SE_GROUP_MANDATORY          = 0x1
+	SE_GROUP_ENABLED_BY_DEFAULT = 0x2
+	SE_GROUP_ENABLED            = 0x4
+	SE_GROUP_OWNER              = 0x8
+	SE_GROUP_USE_FOR_DENY_ONLY  = 0x10
+	SE_GROUP_INTEGRITY          = 0x20
+	SE_GROUP_INTEGRITY_ENABLED  = 0x40
+	SE_GROUP_LOGON_ID           = 0xC0000000
+	SE_GROUP_RESOURCE           = 0x20000000
+)
+
+type GroupUsersInfo0 struct {
+	Grui0_name *uint16
+}
+
+type GroupUsersInfo1 struct {
+	Grui1_name       *uint16
+	Grui1_attributes uint32
+}
+
+// The API interface describes the Win32 functions used in this package and
 // its primary purpose is to allow replacing them with stub functions in unit tests.
 type API interface {
 	AcquireCredentialsHandle(
@@ -130,14 +169,25 @@ type API interface {
 	DeleteSecurityContext(context *CtxtHandle) SECURITY_STATUS
 	FreeContextBuffer(buffer *byte) SECURITY_STATUS
 	FreeCredentialsHandle(handle *CredHandle) SECURITY_STATUS
+	NetUserGetGroups(
+		serverName *uint16,
+		userName *uint16,
+		level uint32,
+		buf **byte,
+		prefmaxlen uint32,
+		entriesread *uint32,
+		totalentries *uint32,
+	) (neterr error)
+	NetApiBufferFree(buf *byte) (neterr error)
 }
 
-// Secur32 implements the API interface by calling the relevant win32 functions
-// from the secur32 dll.
-type Secur32 struct{}
+// Win32 implements the API interface by calling the relevant system functions
+// from secur32.dll and netapi32.dll
+type Win32 struct{}
 
 var (
-	secur32dll = windows.NewLazySystemDLL("secur32.dll")
+	secur32dll  = windows.NewLazySystemDLL("secur32.dll")
+	netapi32dll = windows.NewLazySystemDLL("netapi32.dll")
 
 	procAcquireCredentialsHandleW = secur32dll.NewProc("AcquireCredentialsHandleW")
 	procAcceptSecurityContext     = secur32dll.NewProc("AcceptSecurityContext")
@@ -145,9 +195,10 @@ var (
 	procDeleteSecurityContext     = secur32dll.NewProc("DeleteSecurityContext")
 	procFreeContextBuffer         = secur32dll.NewProc("FreeContextBuffer")
 	procFreeCredentialsHandle     = secur32dll.NewProc("FreeCredentialsHandle")
+	procNetUserGetGroups          = netapi32dll.NewProc("NetUserGetGroups")
 )
 
-func (s *Secur32) AcquireCredentialsHandle(
+func (w *Win32) AcquireCredentialsHandle(
 	principal *uint16,
 	_package *uint16,
 	credentialUse uint32,
@@ -173,7 +224,7 @@ func (s *Secur32) AcquireCredentialsHandle(
 	return SECURITY_STATUS(r1)
 }
 
-func (s *Secur32) AcceptSecurityContext(
+func (w *Win32) AcceptSecurityContext(
 	credential *CredHandle,
 	context *CtxtHandle,
 	input *SecBufferDesc,
@@ -199,7 +250,7 @@ func (s *Secur32) AcceptSecurityContext(
 	return SECURITY_STATUS(r1)
 }
 
-func (s *Secur32) QueryContextAttributes(
+func (w *Win32) QueryContextAttributes(
 	context *CtxtHandle,
 	attribute uint32,
 	buffer *byte,
@@ -213,7 +264,7 @@ func (s *Secur32) QueryContextAttributes(
 	return SECURITY_STATUS(r1)
 }
 
-func (s *Secur32) DeleteSecurityContext(context *CtxtHandle) SECURITY_STATUS {
+func (w *Win32) DeleteSecurityContext(context *CtxtHandle) SECURITY_STATUS {
 	r1, _, _ := syscall.Syscall(
 		procDeleteSecurityContext.Addr(), 1,
 		uintptr(unsafe.Pointer(context)),
@@ -222,7 +273,7 @@ func (s *Secur32) DeleteSecurityContext(context *CtxtHandle) SECURITY_STATUS {
 	return SECURITY_STATUS(r1)
 }
 
-func (s *Secur32) FreeContextBuffer(buffer *byte) SECURITY_STATUS {
+func (w *Win32) FreeContextBuffer(buffer *byte) SECURITY_STATUS {
 	r1, _, _ := syscall.Syscall(
 		procFreeContextBuffer.Addr(), 1,
 		uintptr(unsafe.Pointer(buffer)),
@@ -231,11 +282,31 @@ func (s *Secur32) FreeContextBuffer(buffer *byte) SECURITY_STATUS {
 	return SECURITY_STATUS(r1)
 }
 
-func (s *Secur32) FreeCredentialsHandle(handle *CredHandle) SECURITY_STATUS {
+func (w *Win32) FreeCredentialsHandle(handle *CredHandle) SECURITY_STATUS {
 	r1, _, _ := syscall.Syscall(
 		procFreeCredentialsHandle.Addr(), 1,
 		uintptr(unsafe.Pointer(handle)),
 		0, 0,
 	)
 	return SECURITY_STATUS(r1)
+}
+
+func (w *Win32) NetUserGetGroups(
+	serverName *uint16,
+	userName *uint16,
+	level uint32,
+	buf **byte,
+	prefmaxlen uint32,
+	entriesread *uint32,
+	totalentries *uint32,
+) (neterr error) {
+	r0, _, _ := syscall.Syscall9(procNetUserGetGroups.Addr(), 7, uintptr(unsafe.Pointer(serverName)), uintptr(unsafe.Pointer(userName)), uintptr(level), uintptr(unsafe.Pointer(buf)), uintptr(prefmaxlen), uintptr(unsafe.Pointer(entriesread)), uintptr(unsafe.Pointer(totalentries)), 0, 0)
+	if r0 != 0 {
+		neterr = syscall.Errno(r0)
+	}
+	return
+}
+
+func (w *Win32) NetApiBufferFree(buf *byte) (neterr error) {
+	return syscall.NetApiBufferFree(buf)
 }
