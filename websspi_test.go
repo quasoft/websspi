@@ -128,16 +128,15 @@ func (s *stubContextStore) SetHandle(r *http.Request, w http.ResponseWriter, con
 	return s.setError
 }
 
-func newSecPkgContextNames() *byte {
-	username, err := syscall.UTF16PtrFromString("testuser")
+func newSecPkgContextNames(username string) *byte {
+	namePtr, err := syscall.UTF16PtrFromString(username)
 	if err != nil {
 		panic(err)
 	}
-	return (*byte)(unsafe.Pointer(&SecPkgContext_Names{UserName: username}))
+	return (*byte)(unsafe.Pointer(&SecPkgContext_Names{UserName: namePtr}))
 }
 
-func newGroupUsersInfo0() (entires uint32, total uint32, buf *byte) {
-	groupNames := []string{"group1", "group2", "group3"}
+func newGroupUsersInfo0(groupNames []string) (entires uint32, total uint32, buf *byte) {
 	info := []GroupUsersInfo0{}
 	for _, name := range groupNames {
 		namePtr, err := syscall.UTF16PtrFromString(name)
@@ -154,7 +153,7 @@ func newGroupUsersInfo0() (entires uint32, total uint32, buf *byte) {
 
 // newTestAuthenticator creates an Authenticator for use in tests.
 func newTestAuthenticator(t *testing.T) *Authenticator {
-	entries, total, groupsBuf := newGroupUsersInfo0()
+	entries, total, groupsBuf := newGroupUsersInfo0([]string{"group1", "group2", "group3"})
 	config := Config{
 		contextStore: &stubContextStore{},
 		authAPI: &stubAPI{
@@ -164,7 +163,7 @@ func newTestAuthenticator(t *testing.T) *Authenticator {
 			acceptOutBuf:     nil,
 			deleteStatus:     SEC_E_OK,
 			queryStatus:      SEC_E_OK,
-			queryOutBuf:      newSecPkgContextNames(),
+			queryOutBuf:      newSecPkgContextNames("testuser"),
 			freeBufferStatus: SEC_E_OK,
 			freeCredsStatus:  SEC_E_OK,
 			validToken:       "a87421000492aa874209af8bc028",
