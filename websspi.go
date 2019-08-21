@@ -254,6 +254,7 @@ func (a *Authenticator) AcceptOrContinue(context *CtxtHandle, authData []byte) (
 	}
 	if status == SEC_I_CONTINUE_NEEDED {
 		err = errors.New("Negotiation should continue")
+		return
 	} else if status != SEC_E_OK {
 		err = fmt.Errorf("call to AcceptSecurityContext failed with code 0x%x", status)
 		return
