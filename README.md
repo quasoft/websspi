@@ -1,6 +1,6 @@
 # websspi
 
-*Note: Work in progress! **Not** completed, compiles, but is partially tested! (yet)*
+[![GoDoc](https://godoc.org/github.com/quasoft/websspi?status.svg)](https://godoc.org/github.com/quasoft/websspi) [![Build Status](https://travis-ci.org/quasoft/websspi.png?branch=master)](https://travis-ci.org/quasoft/websspi) [![Coverage Status](https://coveralls.io/repos/github/quasoft/websspi/badge.svg?branch=master)](https://coveralls.io/github/quasoft/websspi?branch=master) [![Go Report Card](https://goreportcard.com/badge/github.com/quasoft/websspi)](https://goreportcard.com/report/github.com/quasoft/websspi)
 
 `websspi` will be an HTTP middleware for Golang that uses Kerberos for single sign-on (SSO) authentication of browser based clients in a Windows environment.
 
