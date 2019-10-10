@@ -1,3 +1,4 @@
+// +build windows
 package websspi
 
 import (
@@ -45,8 +46,8 @@ func (s *stubAPI) AcquireCredentialsHandle(
 	if s.acquireStatus != SEC_E_OK {
 		return s.acquireStatus
 	}
-	credHandle = &CredHandle{}
-	expiry = &syscall.Filetime{}
+	*credHandle = CredHandle{}
+	*expiry = syscall.Filetime{}
 	return SEC_E_OK
 }
 
@@ -830,7 +831,7 @@ func TestWithAuth_ValidToken(t *testing.T) {
 	gotGroups := []string{}
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handlerCalled = true
-		info := r.Context().Value("UserInfo")
+		info := r.Context().Value(UserInfoKey)
 		userInfo, ok := info.(*UserInfo)
 		if ok && userInfo != nil {
 			gotUsername = userInfo.Username

@@ -47,6 +47,17 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// contextKey represents a custom key for values stored in context.Context
+type contextKey string
+
+func (c contextKey) String() string {
+	return "websspi-key-" + string(c)
+}
+
+var (
+	UserInfoKey = contextKey("UserInfo")
+)
+
 // The Authenticator type provides middleware methods for authentication of http requests.
 // A single authenticator object can be shared by concurrent goroutines.
 type Authenticator struct {
@@ -188,11 +199,8 @@ func (a *Authenticator) ReleaseCtxHandle(handle *CtxtHandle) error {
 // function and returns and error if validation failed or continuation of the negotiation is needed.
 // No error is returned if the token was validated (user was authenticated).
 func (a *Authenticator) AcceptOrContinue(context *CtxtHandle, authData []byte) (newCtx *CtxtHandle, out []byte, exp *time.Time, err error) {
-	var status = SEC_E_INTERNAL_ERROR
-
 	if authData == nil {
 		err = errors.New("input token cannot be nil")
-		status = SEC_E_INVALID_TOKEN
 		return
 	}
 
@@ -218,7 +226,7 @@ func (a *Authenticator) AcceptOrContinue(context *CtxtHandle, authData []byte) (
 	var contextAttr uint32
 	var newContextHandle CtxtHandle
 
-	status = a.Config.authAPI.AcceptSecurityContext(
+	var status = a.Config.authAPI.AcceptSecurityContext(
 		a.serverCred,
 		context,
 		&inputDesc,
@@ -381,6 +389,9 @@ func (a *Authenticator) GetUserGroups(userName string) (groups []string, err err
 	return
 }
 
+// GetUserInfo returns a structure containing the name of the user associated with the
+// specified security context and the groups to which they are a member of (if Config.EnumerateGroups)
+// is enabled
 func (a *Authenticator) GetUserInfo(context *CtxtHandle) (*UserInfo, error) {
 	// Get username
 	username, err := a.GetUsername(context)
@@ -582,7 +593,7 @@ func (a *Authenticator) WithAuth(next http.Handler) http.Handler {
 
 		log.Print("Authenticated\n")
 		// Add the UserInfo value to the reqest's context
-		r = r.WithContext(context.WithValue(r.Context(), "UserInfo", user))
+		r = r.WithContext(context.WithValue(r.Context(), UserInfoKey, user))
 		// and to the request header with key Config.AuthUserKey
 		if a.Config.AuthUserKey != "" {
 			r.Header.Set(a.Config.AuthUserKey, user.Username)
