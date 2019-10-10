@@ -5,6 +5,7 @@ import (
 	"unsafe"
 )
 
+// UTF16PtrToString converts a pointer to a UTF16 string to a string
 func UTF16PtrToString(ptr *uint16, maxLen int) (s string) {
 	if ptr == nil {
 		return ""

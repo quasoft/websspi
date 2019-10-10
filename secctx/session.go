@@ -20,12 +20,14 @@ func NewCookieStore() *CookieStore {
 	return s
 }
 
+// GetHandle retrieves a *websspi.CtxtHandle value from the store
 func (s *CookieStore) GetHandle(r *http.Request) (interface{}, error) {
 	session, _ := s.store.Get(r, "websspi")
 	contextHandle := session.Values["contextHandle"]
 	return contextHandle, nil
 }
 
+// SetHandle saves a *websspi.CtxtHandle value to the store
 func (s *CookieStore) SetHandle(r *http.Request, w http.ResponseWriter, contextHandle interface{}) error {
 	session, _ := s.store.Get(r, "websspi")
 	session.Values["contextHandle"] = contextHandle
