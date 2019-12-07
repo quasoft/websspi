@@ -38,4 +38,4 @@ Before trying it, you need to prepare your environment:
 
 ## Security requirements
 
-- SPNEGO HTTP provides no facilities for protecting the HTTP headers or data including the Authorization and WWW-Authenticate headers, which means that the HTTP server **MUST** enforce use of SSL to provide confidentiality to data in these headers!
+- SPNEGO over HTTP provides no facilities for protection of the authroization data contained in HTTP headers (the `Authorization` and `WWW-Authenticate` headers), which means that the web server **MUST** enforce use of HTTPS to provide confidentiality for the data in those headers!
