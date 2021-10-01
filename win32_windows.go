@@ -7,6 +7,13 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// advapi32.dll
+
+type TokenGroups struct {
+	GroupCount uint32                   // DWORD
+	Groups     syscall.SIDAndAttributes // *SIDAndAttributes[]
+}
+
 // secur32.dll
 
 type SECURITY_STATUS syscall.Errno
@@ -63,6 +70,7 @@ const (
 	SECPKG_ATTR_NEGOTIATION_INFO = 12
 	SECPKG_ATTR_NATIVE_NAMES     = 13
 	SECPKG_ATTR_FLAGS            = 14
+	SECPKG_ATTR_ACCESS_TOKEN     = 18
 
 	SECBUFFER_VERSION = 0
 	SECBUFFER_TOKEN   = 2
@@ -101,6 +109,10 @@ type SecPkgContext_Names struct {
 
 type SecPkgContext_Flags struct {
 	Flags uint32
+}
+
+type SecPkgContext_AccessToken struct {
+	AccessToken uintptr
 }
 
 // netapi32.dll
