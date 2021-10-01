@@ -365,7 +365,7 @@ func (a *Authenticator) GetGroups(context *CtxtHandle) (groups []string, err err
 		&tokenInformation[0], uint32(len(tokenInformation)), &requiredMemory,
 	)
 
-	if ec != syscall.ERROR_INSUFFICIENT_BUFFER {
+	if ec != nil {
 		err = fmt.Errorf("GetTokenInformation failed with %+v (when looking up group membership)", ec)
 		return
 	}
