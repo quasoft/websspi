@@ -26,7 +26,7 @@ type Config struct {
 	KrbPrincipal    string // Name of Kerberos principle used by the service (optional).
 	AuthUserKey     string // Key of header to fill with authenticated username, eg. "X-Authenticated-User" or "REMOTE_USER" (optional).
 	EnumerateGroups bool   // If true, groups the user is a member of are enumerated and stored in request context (default false)
-	ServerName      string // Specifies the DNS or NetBIOS name of the remote server which to query about user groups. Ignored if EnumerateGroups is false.
+	ServerName      string // Specifies the DNS or NetBIOS name of the remote server which to query about user groups. Use an empty value to query the groups granted on a real login. Ignored if EnumerateGroups is false.
 }
 
 // NewConfig creates a configuration object with default values.
