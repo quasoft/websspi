@@ -22,6 +22,11 @@ func main() {
 	server := &http.Server{Addr: "0.0.0.0:9000"}
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		username := ""
+		info := r.Context().Value(websspi.UserInfoKey)
+		userInfo, ok := info.(*websspi.UserInfo)
+		if ok && userInfo != nil {
+			username = userInfo.Username
+		}
 		w.Write([]byte("Hello " + username))
 	})
 	http.Handle("/", auth.WithAuth(handler))
