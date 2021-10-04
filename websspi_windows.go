@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os/user"
+	"reflect"
 	"strings"
 	"sync"
 	"syscall"
@@ -24,7 +26,7 @@ type Config struct {
 	KrbPrincipal    string // Name of Kerberos principle used by the service (optional).
 	AuthUserKey     string // Key of header to fill with authenticated username, eg. "X-Authenticated-User" or "REMOTE_USER" (optional).
 	EnumerateGroups bool   // If true, groups the user is a member of are enumerated and stored in request context (default false)
-	ServerName      string // Specifies the DNS or NetBIOS name of the remote server which to query about user groups. Ignored if EnumerateGroups is false.
+	ServerName      string // Specifies the DNS or NetBIOS name of the remote server which to query about user groups. Use an empty value to query the groups granted on a real login. Ignored if EnumerateGroups is false.
 }
 
 // NewConfig creates a configuration object with default values.
@@ -333,6 +335,64 @@ func (a *Authenticator) GetUsername(context *CtxtHandle) (username string, err e
 	return
 }
 
+// GetGroups returns the groups assosiated with the specified security context
+func (a *Authenticator) GetGroups(context *CtxtHandle) (groups []string, err error) {
+	var token SecPkgContext_AccessToken
+	status := a.Config.authAPI.QueryContextAttributes(context, SECPKG_ATTR_ACCESS_TOKEN, (*byte)(unsafe.Pointer(&token)))
+	if status != SEC_E_OK {
+		err = fmt.Errorf("QueryContextAttributes failed with status 0x%x", status)
+		return
+	}
+	var requiredMemory uint32
+
+	// 1. Get buffer size
+	ec := syscall.GetTokenInformation(
+		syscall.Token(token.AccessToken),
+		syscall.TokenGroups,
+		nil, 0, &requiredMemory,
+	)
+
+	if ec != syscall.ERROR_INSUFFICIENT_BUFFER {
+		err = fmt.Errorf("GetTokenInformation failed with %+v (while getting required memory)", ec)
+		return
+	}
+
+	tokenInformation := make([]byte, requiredMemory)
+	// 2. Get data
+	ec = syscall.GetTokenInformation(
+		syscall.Token(token.AccessToken),
+		syscall.TokenGroups,
+		&tokenInformation[0], uint32(len(tokenInformation)), &requiredMemory,
+	)
+
+	if ec != nil {
+		err = fmt.Errorf("GetTokenInformation failed with %+v (when looking up group membership)", ec)
+		return
+	}
+
+	// The struct ends with a variable amount of SIDAndAttributes structs.
+	var tokens *TokenGroups = (*TokenGroups)(unsafe.Pointer(&tokenInformation[0]))
+	var allSidAndAttributes []syscall.SIDAndAttributes
+	hdr := (*reflect.SliceHeader)(unsafe.Pointer(&allSidAndAttributes))
+	hdr.Data = uintptr(unsafe.Pointer(&tokens.Groups))
+	hdr.Len = int(tokens.GroupCount)
+	hdr.Cap = int(tokens.GroupCount)
+
+	for _, sidAndAttributes := range allSidAndAttributes {
+		// SE_GROUP_ENABLED
+		if sidAndAttributes.Attributes&4 == 4 {
+			str, _ := sidAndAttributes.Sid.String()
+			group, err := user.LookupGroupId(str)
+			if err != nil { // Non-group SIDs - can happen sometimes.
+				continue
+			}
+			groups = append(groups, group.Name)
+		}
+	}
+
+	return
+}
+
 // GetUserGroups returns the groups the user is a member of
 func (a *Authenticator) GetUserGroups(userName string) (groups []string, err error) {
 	var serverNamePtr *uint16
@@ -404,7 +464,11 @@ func (a *Authenticator) GetUserInfo(context *CtxtHandle) (*UserInfo, error) {
 
 	// Get groups
 	if a.Config.EnumerateGroups {
-		info.Groups, err = a.GetUserGroups(username)
+		if a.Config.ServerName != "" {
+			info.Groups, err = a.GetUserGroups(username)
+		} else {
+			info.Groups, err = a.GetGroups(context)
+		}
 		if err != nil {
 			return nil, err
 		}
