@@ -254,10 +254,10 @@ func (a *Authenticator) AcceptOrContinue(context *CtxtHandle, authData []byte) (
 	if status == SEC_E_OK || status == SEC_I_CONTINUE_NEEDED {
 		// Copy outputBuf.Buffer to out and free the outputBuf.Buffer
 		out = make([]byte, outputBuf.BufferSize)
-		var bufPtr = uintptr(unsafe.Pointer(outputBuf.Buffer))
+		var bufPtr = unsafe.Pointer(outputBuf.Buffer)
 		for i := 0; i < len(out); i++ {
-			out[i] = *(*byte)(unsafe.Pointer(bufPtr))
-			bufPtr++
+			out[i] = *(*byte)(bufPtr)
+			bufPtr = unsafe.Pointer(uintptr(bufPtr) + 1)
 		}
 	}
 	if outputBuf.Buffer != nil {
@@ -443,14 +443,14 @@ func (a *Authenticator) GetUserGroups(userName string) (groups []string, err err
 		return
 	}
 
-	ptr := uintptr(unsafe.Pointer(buf))
+	ptr := unsafe.Pointer(buf)
 	for i := uint32(0); i < entriesRead; i++ {
-		groupInfo := (*GroupUsersInfo0)(unsafe.Pointer(ptr))
+		groupInfo := (*GroupUsersInfo0)(ptr)
 		groupName := UTF16PtrToString(groupInfo.Grui0_name, MAX_GROUP_NAME_LENGTH)
 		if groupName != "" {
 			groups = append(groups, groupName)
 		}
-		ptr += unsafe.Sizeof(GroupUsersInfo0{})
+		ptr = unsafe.Pointer(uintptr(ptr) + unsafe.Sizeof(GroupUsersInfo0{}))
 	}
 	return
 }
