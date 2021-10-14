@@ -191,6 +191,8 @@ type API interface {
 		totalentries *uint32,
 	) (neterr error)
 	NetApiBufferFree(buf *byte) (neterr error)
+
+	GetTokenInformation(t syscall.Token, infoClass uint32, info *byte, infoLen uint32, returnedLen *uint32) (err error)
 }
 
 // Win32 implements the API interface by calling the relevant system functions
@@ -321,4 +323,8 @@ func (w *Win32) NetUserGetGroups(
 
 func (w *Win32) NetApiBufferFree(buf *byte) (neterr error) {
 	return syscall.NetApiBufferFree(buf)
+}
+
+func (w *Win32) GetTokenInformation(t syscall.Token, infoClass uint32, info *byte, infoLen uint32, returnedLen *uint32) (err error) {
+	return syscall.GetTokenInformation(t, infoClass, info, infoLen, returnedLen)
 }

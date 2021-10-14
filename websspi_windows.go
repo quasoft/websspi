@@ -20,6 +20,11 @@ import (
 )
 
 // The Config object determines the behaviour of the Authenticator.
+//
+// To resolve group membership of authenticated principals, set EnumerateGroups to true.
+// Currently there are two options to resolve group membership - both return different results.
+// To resolve the "static" local or AD group membership, additionally set "ServerName" to a Windows server or Active Directory.
+//
 type Config struct {
 	contextStore    secctx.Store
 	authAPI         API
@@ -27,6 +32,7 @@ type Config struct {
 	AuthUserKey     string // Key of header to fill with authenticated username, eg. "X-Authenticated-User" or "REMOTE_USER" (optional).
 	EnumerateGroups bool   // If true, groups the user is a member of are enumerated and stored in request context (default false)
 	ServerName      string // Specifies the DNS or NetBIOS name of the remote server which to query about user groups. Use an empty value to query the groups granted on a real login. Ignored if EnumerateGroups is false.
+	ResolveLinked   bool   // Resolve a linked token.
 }
 
 // NewConfig creates a configuration object with default values.
@@ -346,7 +352,7 @@ func (a *Authenticator) GetGroups(context *CtxtHandle) (groups []string, err err
 	var requiredMemory uint32
 
 	// 1. Get buffer size
-	ec := syscall.GetTokenInformation(
+	ec := a.Config.authAPI.GetTokenInformation(
 		syscall.Token(token.AccessToken),
 		syscall.TokenGroups,
 		nil, 0, &requiredMemory,
@@ -359,7 +365,7 @@ func (a *Authenticator) GetGroups(context *CtxtHandle) (groups []string, err err
 
 	tokenInformation := make([]byte, requiredMemory)
 	// 2. Get data
-	ec = syscall.GetTokenInformation(
+	ec = a.Config.authAPI.GetTokenInformation(
 		syscall.Token(token.AccessToken),
 		syscall.TokenGroups,
 		&tokenInformation[0], uint32(len(tokenInformation)), &requiredMemory,

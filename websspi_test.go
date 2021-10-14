@@ -1,4 +1,6 @@
+//go:build windows
 // +build windows
+
 package websspi
 
 import (
@@ -6,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os/user"
 	"reflect"
 	"strings"
 	"syscall"
@@ -13,23 +16,50 @@ import (
 	"unsafe"
 )
 
+var sidUsers *syscall.SID
+var sidAdministrators *syscall.SID
+var sidRemoteDesktopUsers *syscall.SID
+
+var resolvedGroups []string
+var resolvedGroupsWoAdmin []string
+
+func init() {
+	for stringSid, binPtr := range map[string]**syscall.SID{
+		"S-1-5-32-544": &sidAdministrators,     // BUILTIN\Administrators
+		"S-1-5-32-545": &sidUsers,              // BUILTIN\Users
+		"S-1-5-32-555": &sidRemoteDesktopUsers, // BUILTIN\Remote Desktop Users
+	} {
+		*binPtr, _ = syscall.StringToSid(stringSid)
+	}
+
+	// Groups are localized...
+	for _, sid := range []string{"S-1-5-32-544", "S-1-5-32-545", "S-1-5-32-555"} {
+		g, _ := user.LookupGroupId(sid)
+		resolvedGroups = append(resolvedGroups, g.Name)
+		if sid != "S-1-5-32-544" {
+			resolvedGroupsWoAdmin = append(resolvedGroupsWoAdmin, g.Name)
+		}
+	}
+}
+
 type stubAPI struct {
-	acquireStatus    SECURITY_STATUS // the status code that should be returned in simulated calls to AcquireCredentialsHandle
-	acceptStatus     SECURITY_STATUS // the status code that should be returned in simulated calls to AcceptSecurityContext
-	acceptNewCtx     *CtxtHandle     // the context handle to be returned in simulated calls to AcceptSecurityContext
-	acceptOutBuf     *SecBuffer      // the output buffer to be returned in simulated calls to AcceptSecurityContext
-	deleteStatus     SECURITY_STATUS // the status code that should be returned in simulated calls to DeleteSecurityContext
-	deleteCalled     bool            // true if DeleteSecurityContext has been called
-	queryStatus      SECURITY_STATUS // the status code that should be returned in simulated calls to QueryContextAttributes
-	queryOutBuf      *byte           // the buffer to be returned in simulated calls to QueryContextAttributes
-	freeBufferStatus SECURITY_STATUS // the status code that should be returned in simulated calls to FreeContextBuffer
-	freeCredsStatus  SECURITY_STATUS // the status code that should be returned in simulated calls to FreeCredentialsHandle
-	validToken       string          // value that will be asumed to be a valid token
-	getGroupsErr     error           // error to be returned in simulated calls to NetUserGetGroups
-	getGroupsBuf     *byte           // the buffer to be returned in simulated calls to NetUserGetGroups
-	getGroupsEntries uint32          // entriesRead to be returned in simulated calls to NetUserGetGroups
-	getGroupsTotal   uint32          // totalEntries to be returned in simulated calls to NetUserGetGroups
-	netBufferFreeErr error           // error to be returned in simulated calls to NetApiBufferFree
+	acquireStatus       SECURITY_STATUS        // the status code that should be returned in simulated calls to AcquireCredentialsHandle
+	acceptStatus        SECURITY_STATUS        // the status code that should be returned in simulated calls to AcceptSecurityContext
+	acceptNewCtx        *CtxtHandle            // the context handle to be returned in simulated calls to AcceptSecurityContext
+	acceptOutBuf        *SecBuffer             // the output buffer to be returned in simulated calls to AcceptSecurityContext
+	deleteStatus        SECURITY_STATUS        // the status code that should be returned in simulated calls to DeleteSecurityContext
+	deleteCalled        bool                   // true if DeleteSecurityContext has been called
+	queryStatus         SECURITY_STATUS        // the status code that should be returned in simulated calls to QueryContextAttributes
+	queryOutBuf         *byte                  // the buffer to be returned in simulated calls to QueryContextAttributes
+	freeBufferStatus    SECURITY_STATUS        // the status code that should be returned in simulated calls to FreeContextBuffer
+	freeCredsStatus     SECURITY_STATUS        // the status code that should be returned in simulated calls to FreeCredentialsHandle
+	validToken          string                 // value that will be asumed to be a valid token
+	getGroupsErr        error                  // error to be returned in simulated calls to NetUserGetGroups
+	getGroupsBuf        *byte                  // the buffer to be returned in simulated calls to NetUserGetGroups
+	getGroupsEntries    uint32                 // entriesRead to be returned in simulated calls to NetUserGetGroups
+	getGroupsTotal      uint32                 // totalEntries to be returned in simulated calls to NetUserGetGroups
+	netBufferFreeErr    error                  // error to be returned in simulated calls to NetApiBufferFree
+	getTokenInformation map[int]map[int][]byte // map[Token] map[TokenInformationClass]
 }
 
 func (s *stubAPI) AcquireCredentialsHandle(
@@ -77,6 +107,10 @@ func (s *stubAPI) QueryContextAttributes(context *CtxtHandle, attribute uint32, 
 			inNames := (*SecPkgContext_Names)(unsafe.Pointer(buffer))
 			outNames := (*SecPkgContext_Names)(unsafe.Pointer(s.queryOutBuf))
 			*inNames = *outNames
+		} else if attribute == SECPKG_ATTR_ACCESS_TOKEN {
+			inToken := (*SecPkgContext_AccessToken)(unsafe.Pointer(buffer))
+			outToken := (*SecPkgContext_AccessToken)(unsafe.Pointer(s.queryOutBuf))
+			*inToken = *outToken
 		}
 	}
 	return s.queryStatus
@@ -112,6 +146,33 @@ func (s *stubAPI) NetUserGetGroups(
 
 func (s *stubAPI) NetApiBufferFree(buf *byte) (neterr error) {
 	return s.netBufferFreeErr
+}
+
+func (s *stubAPI) GetTokenInformation(t syscall.Token, infoClass uint32, info *byte, infoLen uint32, returnedLen *uint32) (err error) {
+	temp1, ok := s.getTokenInformation[int(t)]
+	if !ok {
+		return syscall.Errno(998)
+	}
+
+	temp2, ok := temp1[int(infoClass)]
+	if !ok {
+		return syscall.Errno(998)
+	}
+
+	length := len(temp2)
+	*returnedLen = uint32(length)
+	if infoLen < *returnedLen {
+		return syscall.ERROR_INSUFFICIENT_BUFFER
+	}
+
+	out := make([]byte, length)
+	var outHdr *reflect.SliceHeader
+	outHdr = (*reflect.SliceHeader)(unsafe.Pointer(&out))
+	outHdr.Data = uintptr(unsafe.Pointer(info))
+
+	// dst, src
+	copy(out, temp2)
+	return nil
 }
 
 type stubContextStore struct {
@@ -152,9 +213,41 @@ func newGroupUsersInfo0(groupNames []string) (entires uint32, total uint32, buf 
 	return
 }
 
+func newGroups(limited bool) []byte {
+	info := struct {
+		GroupCount uint32
+		Groups     [3]syscall.SIDAndAttributes
+	}{}
+	info.GroupCount = 3
+
+	info.Groups[0].Sid = sidUsers
+	info.Groups[0].Attributes = 4
+	info.Groups[1].Sid = sidRemoteDesktopUsers
+	info.Groups[1].Attributes = 4
+	info.Groups[2].Sid = sidAdministrators
+	info.Groups[2].Attributes = 4
+
+	if limited {
+		info.Groups[2].Attributes = 0
+	}
+
+	in := make([]byte, reflect.TypeOf(info).Size())
+	out := make([]byte, reflect.TypeOf(info).Size())
+
+	var inHdr *reflect.SliceHeader
+	inHdr = (*reflect.SliceHeader)(unsafe.Pointer(&in))
+	inHdr.Data = uintptr(unsafe.Pointer(&info))
+
+	// Copy to prevent accidential garbage collection.
+	copy(out, in) // dst[], src[]
+
+	return out
+}
+
 // newTestAuthenticator creates an Authenticator for use in tests.
 func newTestAuthenticator(t *testing.T) *Authenticator {
 	entries, total, groupsBuf := newGroupUsersInfo0([]string{"group1", "group2", "group3"})
+
 	config := Config{
 		contextStore: &stubContextStore{},
 		authAPI: &stubAPI{
@@ -173,6 +266,15 @@ func newTestAuthenticator(t *testing.T) *Authenticator {
 			getGroupsEntries: entries,
 			getGroupsTotal:   total,
 			netBufferFreeErr: nil,
+
+			getTokenInformation: map[int]map[int][]byte{
+				1: {
+					syscall.TokenGroups: newGroups(true),
+				},
+				2: {
+					syscall.TokenGroups: newGroups(false),
+				},
+			},
 		},
 		KrbPrincipal:    "service@test.local",
 		EnumerateGroups: true,
@@ -537,6 +639,31 @@ func TestGetUserGroups_PartialRead(t *testing.T) {
 
 	if err == nil {
 		t.Errorf("GetUserGroups() returns no error when entries read (%d) < total entries (%d), wanted an error", 1, 3)
+	}
+}
+
+func TestGetGroups(t *testing.T) {
+	token1 := SecPkgContext_AccessToken{1}
+
+	auth := newTestAuthenticator(t)
+	auth.Config.authAPI.(*stubAPI).queryStatus = 0
+	auth.Config.authAPI.(*stubAPI).queryOutBuf = (*byte)(unsafe.Pointer(&token1))
+
+	groups, err := auth.GetGroups(nil)
+	if err != nil {
+		t.Fatal("GetGroups() returns an error.")
+	}
+
+	equals := true
+	shouldBe := resolvedGroupsWoAdmin
+	if len(groups) == len(shouldBe) {
+		equals = reflect.DeepEqual(shouldBe, groups)
+	} else {
+		equals = false
+	}
+
+	if !equals {
+		t.Fatalf("GetGroups() returns %+v instead of %+v", groups, shouldBe)
 	}
 }
 
