@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"html/template"
 	"log"
 	"net/http"
 	"os"
@@ -12,8 +13,28 @@ import (
 	"github.com/quasoft/websspi"
 )
 
+var helloTemplate = template.Must(template.New("index.html").Parse(`
+{{- if . -}}
+<h2>Hello {{ .Username }}!</h2>
+
+{{ if .Groups -}}
+Groups:
+<ul>
+{{- range .Groups}}
+	<li>{{ . }}</li>
+{{end -}}
+</ul>
+{{- end }}
+{{- else -}}
+<h2>Hello!</h2>
+{{- end -}}
+`))
+
 func main() {
 	config := websspi.NewConfig()
+	config.EnumerateGroups = true // If groups should be resolved
+	// config.ServerName = "..." // If static instead of dynamic group membership should be resolved
+
 	auth, err := websspi.New(config)
 	if err != nil {
 		panic(err)
@@ -21,13 +42,10 @@ func main() {
 
 	server := &http.Server{Addr: "0.0.0.0:9000"}
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		username := ""
 		info := r.Context().Value(websspi.UserInfoKey)
-		userInfo, ok := info.(*websspi.UserInfo)
-		if ok && userInfo != nil {
-			username = userInfo.Username
-		}
-		w.Write([]byte("Hello " + username))
+		userInfo, _ := info.(*websspi.UserInfo)
+		w.Header().Add("Content-Type", "text/html; encoding=utf-8")
+		helloTemplate.Execute(w, userInfo)
 	})
 	http.Handle("/", auth.WithAuth(handler))
 
