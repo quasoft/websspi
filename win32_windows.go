@@ -14,6 +14,14 @@ type TokenGroups struct {
 	Groups     syscall.SIDAndAttributes // *SIDAndAttributes[]
 }
 
+type TokenLinkedToken struct {
+	LinkedToken syscall.Handle
+}
+
+type TokenUser struct {
+	User syscall.SIDAndAttributes
+}
+
 // secur32.dll
 
 type SECURITY_STATUS syscall.Errno
