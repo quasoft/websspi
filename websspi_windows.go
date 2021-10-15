@@ -63,8 +63,8 @@ func (c contextKey) String() string {
 }
 
 var (
-	UserInfoKey         = contextKey("UserInfo")
-	LinkedTokenUserInfo = contextKey("LinkedTokenUserInfo")
+	UserInfoKey            = contextKey("UserInfo")
+	LinkedTokenUserInfoKey = contextKey("LinkedTokenUserInfo")
 )
 
 // The Authenticator type provides middleware methods for authentication of http requests.
@@ -342,16 +342,93 @@ func (a *Authenticator) GetUsername(context *CtxtHandle) (username string, err e
 	return
 }
 
-// GetGroups returns the groups assosiated with the specified security context
-func (a *Authenticator) GetGroups(context *CtxtHandle) (groups []string, err error) {
+// GetAccessToken returns the access token of a context handle.
+func (a *Authenticator) GetAccessToken(context *CtxtHandle) (t syscall.Token, err error) {
 	var token SecPkgContext_AccessToken
 	status := a.Config.authAPI.QueryContextAttributes(context, SECPKG_ATTR_ACCESS_TOKEN, (*byte)(unsafe.Pointer(&token)))
 	if status != SEC_E_OK {
 		err = fmt.Errorf("QueryContextAttributes failed with status 0x%x", status)
 		return
 	}
+	return syscall.Token(token.AccessToken), err
+}
 
-	return a.GetGroupsFromToken(syscall.Token(token.AccessToken))
+// GetLinkedUserInfo returns the user info of a linked token e.g. the full token when using the UAC
+func (a *Authenticator) GetLinkedUserInfo(context *CtxtHandle) (u *UserInfo, err error) {
+	var token syscall.Token
+	token, err = a.GetAccessToken(context)
+	if err != nil {
+		return
+	}
+
+	linkedUserInfo := TokenLinkedToken{}
+	var usedMemory uint32
+
+	err = a.Config.authAPI.GetTokenInformation(
+		token,
+		uint32(syscall.TokenLinkedToken),
+		(*byte)(unsafe.Pointer(&linkedUserInfo)),
+		uint32(reflect.TypeOf(linkedUserInfo).Size()),
+		&usedMemory,
+	)
+	if err != nil {
+		return
+	}
+
+	defer syscall.CloseHandle(linkedUserInfo.LinkedToken)
+	// The buffer will also store the SID, therefore more than sizeof(TokenUser) bytes are required.
+	buffer := make([]byte, 50)
+	linkedToken := syscall.Token(linkedUserInfo.LinkedToken)
+
+	err = a.Config.authAPI.GetTokenInformation(
+		token,
+		uint32(syscall.TokenUser),
+		&buffer[0],
+		uint32(len(buffer)),
+		&usedMemory,
+	)
+
+	tokenuser := (*TokenUser)(unsafe.Pointer(&buffer[0]))
+
+	if err != nil {
+		return
+	}
+
+	var stringsid string
+	stringsid, err = tokenuser.User.Sid.String()
+	if err != nil {
+		return
+
+	}
+
+	var lookedup *user.User
+	lookedup, err = user.LookupId(stringsid)
+	if err != nil {
+		return
+	}
+
+	u = &UserInfo{}
+	u.Username = lookedup.Username
+
+	if a.Config.EnumerateGroups {
+		if a.Config.ServerName == "" {
+			u.Groups, err = a.GetGroupsFromToken(linkedToken)
+		} else {
+			u.Groups, err = a.GetUserGroups(u.Username)
+		}
+	}
+
+	return
+}
+
+// GetGroups returns the groups assosiated with the specified security context
+func (a *Authenticator) GetGroups(context *CtxtHandle) (groups []string, err error) {
+	var token syscall.Token
+	token, err = a.GetAccessToken(context)
+	if err != nil {
+		return
+	}
+	return a.GetGroupsFromToken(token)
 }
 
 // GetGroupsFromToken returns the active groups of a Windows token
@@ -482,6 +559,13 @@ func (a *Authenticator) GetUserInfo(context *CtxtHandle) (*UserInfo, error) {
 		} else {
 			info.Groups, err = a.GetGroups(context)
 		}
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if a.Config.ResolveLinked {
+		info.linked, err = a.GetLinkedUserInfo(context)
 		if err != nil {
 			return nil, err
 		}
@@ -671,6 +755,9 @@ func (a *Authenticator) WithAuth(next http.Handler) http.Handler {
 		log.Print("Authenticated\n")
 		// Add the UserInfo value to the reqest's context
 		r = r.WithContext(context.WithValue(r.Context(), UserInfoKey, user))
+		if user.linked != nil {
+			r = r.WithContext(context.WithValue(r.Context(), LinkedTokenUserInfoKey, user.linked))
+		}
 		// and to the request header with key Config.AuthUserKey
 		if a.Config.AuthUserKey != "" {
 			r.Header.Set(a.Config.AuthUserKey, user.Username)

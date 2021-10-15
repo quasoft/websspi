@@ -23,11 +23,20 @@ var sidRemoteDesktopUsers *syscall.SID
 var resolvedGroups []string
 var resolvedGroupsWoAdmin []string
 
+var sidAdministrator *syscall.SID
+var resolvedAdministrator string
+
 func init() {
+	me, _ := user.Current()
+	parts := strings.Split(me.Uid, "-")
+	administrator, _ := user.LookupId(strings.Join(parts[0:len(parts)-2], "-") + "-500")
+	resolvedAdministrator = administrator.Username
+
 	for stringSid, binPtr := range map[string]**syscall.SID{
-		"S-1-5-32-544": &sidAdministrators,     // BUILTIN\Administrators
-		"S-1-5-32-545": &sidUsers,              // BUILTIN\Users
-		"S-1-5-32-555": &sidRemoteDesktopUsers, // BUILTIN\Remote Desktop Users
+		administrator.Uid: &sidAdministrator,      // ...\Administrator
+		"S-1-5-32-544":    &sidAdministrators,     // BUILTIN\Administrators
+		"S-1-5-32-545":    &sidUsers,              // BUILTIN\Users
+		"S-1-5-32-555":    &sidRemoteDesktopUsers, // BUILTIN\Remote Desktop Users
 	} {
 		*binPtr, _ = syscall.StringToSid(stringSid)
 	}
