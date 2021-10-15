@@ -63,7 +63,8 @@ func (c contextKey) String() string {
 }
 
 var (
-	UserInfoKey = contextKey("UserInfo")
+	UserInfoKey         = contextKey("UserInfo")
+	LinkedTokenUserInfo = contextKey("LinkedTokenUserInfo")
 )
 
 // The Authenticator type provides middleware methods for authentication of http requests.
@@ -349,11 +350,17 @@ func (a *Authenticator) GetGroups(context *CtxtHandle) (groups []string, err err
 		err = fmt.Errorf("QueryContextAttributes failed with status 0x%x", status)
 		return
 	}
+
+	return a.GetGroupsFromToken(syscall.Token(token.AccessToken))
+}
+
+// GetGroupsFromToken returns the active groups of a Windows token
+func (a *Authenticator) GetGroupsFromToken(token syscall.Token) (groups []string, err error) {
 	var requiredMemory uint32
 
 	// 1. Get buffer size
 	ec := a.Config.authAPI.GetTokenInformation(
-		syscall.Token(token.AccessToken),
+		syscall.Token(token),
 		syscall.TokenGroups,
 		nil, 0, &requiredMemory,
 	)
@@ -366,7 +373,7 @@ func (a *Authenticator) GetGroups(context *CtxtHandle) (groups []string, err err
 	tokenInformation := make([]byte, requiredMemory)
 	// 2. Get data
 	ec = a.Config.authAPI.GetTokenInformation(
-		syscall.Token(token.AccessToken),
+		syscall.Token(token),
 		syscall.TokenGroups,
 		&tokenInformation[0], uint32(len(tokenInformation)), &requiredMemory,
 	)
