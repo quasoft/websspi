@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os/user"
 	"reflect"
+	"sort"
 	"strings"
 	"syscall"
 	"testing"
@@ -23,20 +24,19 @@ var sidRemoteDesktopUsers *syscall.SID
 var resolvedGroups []string
 var resolvedGroupsWoAdmin []string
 
-var sidAdministrator *syscall.SID
-var resolvedAdministrator string
+var sidThisUser *syscall.SID
+var thisUser string
 
 func init() {
 	me, _ := user.Current()
-	parts := strings.Split(me.Uid, "-")
-	administrator, _ := user.LookupId(strings.Join(parts[0:len(parts)-2], "-") + "-500")
-	resolvedAdministrator = administrator.Username
+	normalized, _ := user.LookupId(me.Uid)
+	thisUser = normalized.Username
 
 	for stringSid, binPtr := range map[string]**syscall.SID{
-		administrator.Uid: &sidAdministrator,      // ...\Administrator
-		"S-1-5-32-544":    &sidAdministrators,     // BUILTIN\Administrators
-		"S-1-5-32-545":    &sidUsers,              // BUILTIN\Users
-		"S-1-5-32-555":    &sidRemoteDesktopUsers, // BUILTIN\Remote Desktop Users
+		me.Uid:         &sidThisUser,           // ...\Administrator
+		"S-1-5-32-544": &sidAdministrators,     // BUILTIN\Administrators
+		"S-1-5-32-545": &sidUsers,              // BUILTIN\Users
+		"S-1-5-32-555": &sidRemoteDesktopUsers, // BUILTIN\Remote Desktop Users
 	} {
 		*binPtr, _ = syscall.StringToSid(stringSid)
 	}
@@ -165,7 +165,7 @@ func (s *stubAPI) GetTokenInformation(t syscall.Token, infoClass uint32, info *b
 
 	temp2, ok := temp1[int(infoClass)]
 	if !ok {
-		return syscall.Errno(998)
+		return syscall.Errno(999)
 	}
 
 	length := len(temp2)
@@ -253,6 +253,38 @@ func newGroups(limited bool) []byte {
 	return out
 }
 
+func newUser() []byte {
+	u := TokenUser{
+		syscall.SIDAndAttributes{
+			Sid:        sidThisUser,
+			Attributes: 0,
+		},
+	}
+
+	in := make([]byte, reflect.TypeOf(u).Size())
+	out := make([]byte, reflect.TypeOf(u).Size())
+	var inHdr *reflect.SliceHeader
+	inHdr = (*reflect.SliceHeader)(unsafe.Pointer(&in))
+	inHdr.Data = uintptr(unsafe.Pointer(&u))
+
+	copy(out, in)
+	return out
+}
+
+func newToken() []byte {
+	u := TokenLinkedToken{
+		LinkedToken: 2,
+	}
+	in := make([]byte, reflect.TypeOf(u).Size())
+	out := make([]byte, reflect.TypeOf(u).Size())
+	var inHdr *reflect.SliceHeader
+	inHdr = (*reflect.SliceHeader)(unsafe.Pointer(&in))
+	inHdr.Data = uintptr(unsafe.Pointer(&u))
+
+	copy(out, in)
+	return out
+}
+
 // newTestAuthenticator creates an Authenticator for use in tests.
 func newTestAuthenticator(t *testing.T) *Authenticator {
 	entries, total, groupsBuf := newGroupUsersInfo0([]string{"group1", "group2", "group3"})
@@ -278,10 +310,12 @@ func newTestAuthenticator(t *testing.T) *Authenticator {
 
 			getTokenInformation: map[int]map[int][]byte{
 				1: {
-					syscall.TokenGroups: newGroups(true),
+					syscall.TokenGroups:      newGroups(true),
+					syscall.TokenLinkedToken: newToken(),
 				},
 				2: {
 					syscall.TokenGroups: newGroups(false),
+					syscall.TokenUser:   newUser(),
 				},
 			},
 		},
@@ -648,6 +682,32 @@ func TestGetUserGroups_PartialRead(t *testing.T) {
 
 	if err == nil {
 		t.Errorf("GetUserGroups() returns no error when entries read (%d) < total entries (%d), wanted an error", 1, 3)
+	}
+}
+
+func TestGetLinkedUserInfo(t *testing.T) {
+	token1 := SecPkgContext_AccessToken{1}
+
+	auth := newTestAuthenticator(t)
+	auth.Config.ServerName = ""
+	auth.Config.authAPI.(*stubAPI).queryStatus = 0
+	auth.Config.authAPI.(*stubAPI).queryOutBuf = (*byte)(unsafe.Pointer(&token1))
+
+	linked, err := auth.GetLinkedUserInfo(nil)
+	if err != nil {
+		t.Fatal("GetLinkedUserInfo() returns an error.", err)
+	}
+
+	if linked.Username != thisUser {
+		t.Fatal("GetLinkedUserInfo() returns the wrong user", linked.Username, "instead of", thisUser)
+	}
+
+	expectedGroups := resolvedGroups
+	sort.Strings(linked.Groups)
+	sort.Strings(expectedGroups)
+
+	if len(linked.Groups) != len(expectedGroups) || !reflect.DeepEqual(linked.Groups, expectedGroups) {
+		t.Fatal("GetLinkedUserInfo() returns the wrong groups", linked.Groups, "instead of", expectedGroups)
 	}
 }
 
