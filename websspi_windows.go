@@ -376,15 +376,26 @@ func (a *Authenticator) GetLinkedUserInfo(context *CtxtHandle) (u *UserInfo, err
 	}
 
 	defer syscall.CloseHandle(linkedUserInfo.LinkedToken)
-	// The buffer will also store the SID, therefore more than sizeof(TokenUser) bytes are required.
-	buffer := make([]byte, 50)
 	linkedToken := syscall.Token(linkedUserInfo.LinkedToken)
 
+	// The buffer will also store the SID, therefore more than sizeof(TokenUser) bytes are required.
 	err = a.Config.authAPI.GetTokenInformation(
-		token,
+		linkedToken,
+		uint32(syscall.TokenUser),
+		nil,
+		0,
+		&usedMemory,
+	)
+	if err != syscall.ERROR_INSUFFICIENT_BUFFER {
+		return
+	}
+
+	buffer := make([]byte, int(usedMemory))
+	err = a.Config.authAPI.GetTokenInformation(
+		linkedToken,
 		uint32(syscall.TokenUser),
 		&buffer[0],
-		uint32(len(buffer)),
+		usedMemory,
 		&usedMemory,
 	)
 
