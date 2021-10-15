@@ -1,6 +1,6 @@
 # websspi
 
-[![GoDoc](https://godoc.org/github.com/quasoft/websspi?status.svg)](https://godoc.org/github.com/quasoft/websspi) [![Build Status](https://travis-ci.org/quasoft/websspi.png?branch=master)](https://travis-ci.org/quasoft/websspi) [![Coverage Status](https://coveralls.io/repos/github/quasoft/websspi/badge.svg?branch=master)](https://coveralls.io/github/quasoft/websspi?branch=master) [![Go Report Card](https://goreportcard.com/badge/github.com/quasoft/websspi)](https://goreportcard.com/report/github.com/quasoft/websspi)
+[![GoDoc](https://godoc.org/github.com/quasoft/websspi?status.svg)](https://godoc.org/github.com/quasoft/websspi) [![Build Status](https://app.travis-ci.com/quasoft/websspi.svg?branch=master)](https://app.travis-ci.com/github/quasoft/websspi) [![Coverage Status](https://coveralls.io/repos/github/quasoft/websspi/badge.svg?branch=master)](https://coveralls.io/github/quasoft/websspi?branch=master) [![Go Report Card](https://goreportcard.com/badge/github.com/quasoft/websspi)](https://goreportcard.com/report/github.com/quasoft/websspi)
 
 `websspi` is an HTTP middleware for Golang that uses Kerberos/NTLM for single sign-on (SSO) authentication of browser based clients in a Windows environment.
 
